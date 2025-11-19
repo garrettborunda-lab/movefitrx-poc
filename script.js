@@ -1,5 +1,5 @@
 // ----------------------------------------------------------------------
-// --- STABLE CONFIGURATION: Uses Mock data with fallback to Canvas ---
+// --- STABLE CONFIGURATION: MOCK DATA LAYER (NO LIVE FIREBASE) ---
 // ----------------------------------------------------------------------
 const mockFirebaseConfig = {
     apiKey: "AIzaSy_MOCK_API_KEY_1234567890", 
@@ -10,20 +10,27 @@ const mockFirebaseConfig = {
     appId: "1:123456789012:web:abcdefghijklmnop"
 };
 
-// Attempt to use Canvas resources, fall back to mock if not defined or if key is invalid
-const appId = typeof __app_id !== 'undefined' ? __app_id : mockFirebaseConfig.projectId;
-const firebaseConfig = (typeof __firebase_config !== 'undefined' && JSON.parse(__firebase_config).apiKey) ? JSON.parse(__firebase_config) : mockFirebaseConfig;
-const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null; 
+const appId = mockFirebaseConfig.projectId;
 
-import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-import { getFirestore, doc, setDoc, collection, query, where, onSnapshot, orderBy, serverTimestamp, runTransaction, getDocs, limit } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
-let app, db, auth, userId = 'loading';
-let isAuthReady = false;
+// --- MOCK DATA LAYER GLOBALS ---
+let userId = 'MOCK_USER_ID';
+let isAuthReady = true;
 let pendingPatientData = null;
-setLogLevel('debug');
+
+// Mock Arrays for In-Memory Demo Functionality
+let AVAILABLE_MOCK_CREDENTIALS = [
+    { matrixId: 'MFRX-AB001', gymAccessCode: '205101', used: false },
+    { matrixId: 'MFRX-CD002', gymAccessCode: '205102', used: false },
+    { matrixId: 'MFRX-EF003', gymAccessCode: '205103', used: false },
+    { matrixId: 'MFRX-GH004', gymAccessCode: '205104', used: false },
+    { matrixId: 'MFRX-IJ005', gymAccessCode: '205105', used: false },
+    { matrixId: 'MFRX-KL006', gymAccessCode: '205106', used: false },
+    { matrixId: 'MFRX-MN007', gymAccessCode: '205107', used: false },
+    { matrixId: 'MFRX-OP008', gymAccessCode: '205108', used: false },
+    { matrixId: 'MFRX-QR009', gymAccessCode: '205109', used: false },
+    { matrixId: 'MFRX-ST010', gymAccessCode: '205110', used: false },
+];
+let REFERRED_PATIENTS = []; 
 
 // --- CORE DATA MODELS (MOCK DATA FOR POC) ---
 const DIAGNOSES = [
@@ -32,7 +39,7 @@ const DIAGNOSES = [
     { id: 'OSTP', name: 'Osteopenia', regimen: 'Bone Density & Balance', code: 'M85.8' },
     { id: 'OSTE', name: 'Osteoporosis', regimen: 'Bone Density & Balance', code: 'M81.0' },
     { id: 'PCOS', name: 'PCOS', regimen: 'Cardio Endurance & Insulin Sensitivity', code: 'E28.2' },
-    { id: 'HYPT', name: 'Hypertension', regimen: 'Cardio Vascular Health', code: 'I10' }, // **NEW ADDITION**
+    { id: 'HYPT', name: 'Hypertension', regimen: 'Cardio Vascular Health', code: 'I10' }, 
 ];
 
 const CLINICIAN_DETAILS = {
@@ -66,7 +73,7 @@ const WORKOUT_DETAILS = {
             { machine: 'Pec Fly', activity: '3 Sets x 15 Reps (Circuit)', matrixWorkoutId: 'MXW-CDI-02' },
         ]
     },
-    'Cardio Vascular Health': { // **NEW ADDITION**
+    'Cardio Vascular Health': {
         url: 'https://movefitrx.com/regimen/cardio-vascular-health',
         steps: [
             { machine: 'Treadmill', activity: 'Aerobic Walk 40 min (Target HR: 110-130)', matrixWorkoutId: 'MXW-CVH-01' },
@@ -75,37 +82,16 @@ const WORKOUT_DETAILS = {
     },
 };
 
-const MOCK_CREDENTIALS = [
-    { matrixId: 'MFRX-AB001', gymAccessCode: '205101', used: false },
-    { matrixId: 'MFRX-CD002', gymAccessCode: '205102', used: false },
-    { matrixId: 'MFRX-EF003', gymAccessCode: '205103', used: false },
-    { matrixId: 'MFRX-GH004', gymAccessCode: '205104', used: false },
-    { matrixId: 'MFRX-IJ005', gymAccessCode: '205105', used: false },
-    { matrixId: 'MFRX-KL006', gymAccessCode: '205106', used: false },
-    { matrixId: 'MFRX-MN007', gymAccessCode: '205107', used: false },
-    { matrixId: 'MFRX-OP008', gymAccessCode: '205108', used: false },
-    { matrixId: 'MFRX-QR009', gymAccessCode: '205109', used: false },
-    { matrixId: 'MFRX-ST010', gymAccessCode: '205110', used: false },
-];
-
-const PATIENTS_COLLECTION = `artifacts/${appId}/public/data/patients`;
-const RESULTS_COLLECTION = `artifacts/${appId}/public/data/results`;
-const CREDENTIALS_COLLECTION = `artifacts/${appId}/public/data/credentials`;
-
-// --- GYM LOCATION DETAILS ---
 const GYM_DETAILS = {
     name: 'Coronado Fitness Club',
     address: '875 Orange Ave suite 101, Coronado, CA 92118',
     website: 'https://www.coronadofitnessclub.com/',
 };
 
-/**
- * Converts Firebase Timestamp to a readable date/time string.
- * @param {firebase.firestore.Timestamp|string} timestamp 
- * @returns {string} Formatted date string.
- */
+// MOCK FUNCTION: Uses standard JS Date instead of Firestore Timestamp
 const getFormattedDate = (timestamp) => {
     if (!timestamp) return 'N/A';
+    // The timestamp could be a mock ISO string or a Date object
     const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
     return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
@@ -113,32 +99,27 @@ const getFormattedDate = (timestamp) => {
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
 const randomFloat = (min, max) => (Math.random() * (max - min) + min).toFixed(1);
 
-/**
- * Fetches a patient document by their Matrix ID.
- * @param {string} matrixId - The unique ID of the patient.
- * @returns {Promise<object|null>} The patient data object or null.
- */
+// MOCK REPLACEMENT: Fetches patient data from the local REFERRED_PATIENTS array
 async function getPatientByMatrixId(matrixId) {
-    try {
-        const q = query(collection(db, PATIENTS_COLLECTION), where('matrixId', '==', matrixId), limit(1));
-        const snapshot = await getDocs(q);
-        
-        if (!snapshot.empty) {
-            return snapshot.docs[0].data();
-        }
-        return null;
-    } catch (error) {
-        console.error("Error fetching patient by Matrix ID:", error);
-        return null;
-    }
+    return REFERRED_PATIENTS.find(p => p.matrixId === matrixId) || null;
 }
 
-/**
- * Generates the content for the Letter of Medical Necessity (LMN).
- * @param {object} patient - Patient data.
- * @param {object} diagnosis - Diagnosis data.
- * @returns {string} Markdown-formatted LMN content.
- */
+// MOCK FUNCTION: Gets a credential from local memory array
+async function getAvailableCredential() {
+    // Take the first one and remove it (simulating it being "used")
+    const unusedCredential = AVAILABLE_MOCK_CREDENTIALS.shift(); 
+    
+    if (!unusedCredential) {
+        return null;
+    }
+
+    // Mock the structure expected by handleReferral
+    return {
+        docId: unusedCredential.matrixId,
+        data: unusedCredential
+    };
+}
+
 function generateLMNContent(patient, diagnosis) {
     const template = `To Whom It May Concern:
 
@@ -187,7 +168,6 @@ Sincerely,
 window.openLMNModal = (patient, diagnosis) => {
     const lmnContent = generateLMNContent(patient, diagnosis);
     
-    // Simple Markdown rendering for the modal for display
     let formattedContent = lmnContent
         .replace(/^### (.*$)/gim, '<h3>$1</h3>')
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
@@ -214,26 +194,6 @@ function closePatientWelcomeModal() {
 }
 window.closePatientWelcomeModal = closePatientWelcomeModal;
 
-/**
- * Finds the first unused credential in Firestore.
- * @returns {Promise<object|null>} The credential document object or null.
- */
-async function getAvailableCredential() {
-    const q = query(collection(db, CREDENTIALS_COLLECTION), where('used', '==', false), limit(1));
-    const snapshot = await getDocs(q);
-    
-    if (snapshot.empty) {
-        return null;
-    }
-    
-    const unusedCredentials = snapshot.docs.map(doc => ({
-        docId: doc.id,
-        data: doc.data()
-    }));
-    
-    return unusedCredentials[0];
-}
-
 async function handleReferralComplete(name, patientData, isSuccess) {
     document.getElementById('clinician-notification-modal').classList.add('hidden');
 
@@ -248,7 +208,7 @@ async function handleReferralComplete(name, patientData, isSuccess) {
 }
 
 /**
- * Handles the patient referral form submission using a Firestore Transaction.
+ * Handles the patient referral form submission using purely local state (MOCK).
  */
 async function handleReferral(e) {
     e.preventDefault();
@@ -261,68 +221,58 @@ async function handleReferral(e) {
     submitButton.disabled = true;
     submitButton.textContent = 'Acquiring Credentials...';
     
-    let referralSuccess = false;
-
+    // --- MOCK LOGIC START ---
     try {
-        const credential = await getAvailableCredential();
+        // 1. Get Mock Credential
+        const credential = await getAvailableCredential(); 
 
         if (!credential) {
             document.getElementById('referral-status').textContent = `Failure: No available Matrix/Gym credentials.`;
             document.getElementById('referral-status').className = 'text-red-600 mt-2';
             return;
         }
-        
+
         const matrixId = credential.data.matrixId;
         const gymAccessCode = credential.data.gymAccessCode;
         const diagnosis = DIAGNOSES.find(d => d.id === diagnosisId);
         
         submitButton.textContent = 'Submitting Referral...';
 
-        await runTransaction(db, async (transaction) => {
-            const credRef = doc(db, CREDENTIALS_COLLECTION, credential.docId);
-            // 1. Mark credential as used
-            transaction.update(credRef, { 
-                used: true, 
-                patientName: name,
-                assignedAt: serverTimestamp() 
-            });
-
-            // 2. Create the patient record
-            const patientRef = doc(collection(db, PATIENTS_COLLECTION));
-            const patientData = {
-                name,
-                email,
-                diagnosisId,
-                regimenName: diagnosis.regimen,
-                matrixId, 
-                gymAccessCode, 
-                referrerId: userId,
-                status: 'PENDING_PAYMENT', 
-                createdAt: serverTimestamp()
-            };
-            transaction.set(patientRef, patientData);
-            pendingPatientData = patientData;
-        });
+        // 2. Mock Patient Record Creation
+        const patientData = {
+            name,
+            email,
+            diagnosisId,
+            regimenName: diagnosis.regimen,
+            matrixId, 
+            gymAccessCode, 
+            referrerId: userId,
+            status: 'PENDING_PAYMENT', 
+            createdAt: new Date().toISOString()
+        };
+        
+        // 3. Update Local State & UI
+        REFERRED_PATIENTS.unshift(patientData); 
+        pendingPatientData = patientData;
         
         form.reset();
-        referralSuccess = true;
         
         showClinicianNotification({name, matrixId});
 
+        // 4. Update Button Status (Success Path)
+        handleReferralComplete(name, pendingPatientData, true); 
+    
     } catch (error) {
+        // This will ONLY catch genuine JavaScript execution errors now, not Firebase errors
         console.error("Error submitting referral:", error);
-        referralSuccess = false;
-        handleReferralComplete(name, null, referralSuccess);
+        handleReferralComplete(name, null, false);
     } finally {
         submitButton.disabled = false;
         submitButton.textContent = 'Refer Patient';
     }
+    // --- MOCK LOGIC END ---
 }
 
-/**
- * Shows a modal notification to the clinician after a successful referral.
- * @param {object} patient - The patient data object.
- */
 function showClinicianNotification(patient) {
     const modalEl = document.getElementById('clinician-notification-modal');
     const contentEl = document.getElementById('clinician-notification-content');
@@ -346,10 +296,6 @@ function showClinicianNotification(patient) {
     modalEl.classList.remove('hidden');
 }
 
-/**
- * Shows a modal simulating the welcome email the patient receives.
- * @param {object} patient - The patient data object.
- */
 function showPatientWelcomeModal(patient) {
     const modalEl = document.getElementById('patient-welcome-modal');
     const contentEl = document.getElementById('patient-welcome-content');
@@ -378,16 +324,12 @@ function showPatientWelcomeModal(patient) {
         </div>
     `;
     modalEl.classList.remove('hidden');
-    window.patientWelcomeData = null; // Clear data once shown
+    window.patientWelcomeData = null;
 }
 
-/**
- * Renders the adherence bar chart based on workout data.
- * @param {object} data - Object containing date keys and workout counts.
- */
 function renderAdherenceChart(data) {
     const container = document.getElementById('progress-chart-container');
-    const maxVal = 3; // Target workouts per week
+    const maxVal = 3; 
     const today = new Date();
     const days = [];
     
@@ -421,11 +363,6 @@ function renderAdherenceChart(data) {
     container.innerHTML = chartHTML;
 }
 
-/**
- * Displays the detailed progress view for a selected patient in the clinician portal.
- * @param {string} patientDocId - Firestore document ID of the patient.
- * @param {object} patient - Patient data object.
- */
 function showDoctorProgress(patientDocId, patient) {
     const doctorProgressEl = document.getElementById('doctor-progress');
     doctorProgressEl.classList.remove('hidden');
@@ -434,13 +371,11 @@ function showDoctorProgress(patientDocId, patient) {
 
     const diagnosis = DIAGNOSES.find(d => d.id === patient.diagnosisId);
     
-    // JSON stringify and escape for inline use in HTML attributes
     const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
     const diagnosisJson = JSON.stringify(diagnosis).replace(/"/g, '&quot;');
     
     const statusDisplay = patient.status === 'PAID' ? 'SIGNUP COMPLETE' : 'SIGNUP PENDING';
 
-    // Use innerHTML to dynamically render the progress dashboard
     doctorProgressEl.innerHTML = `
         <div class="flex justify-between items-center mb-4">
             <h2 class="text-2xl font-bold text-green-700">${patient.name}'s Progress</h2>
@@ -476,61 +411,16 @@ function showDoctorProgress(patientDocId, patient) {
         </div>
     `;
     
-    // Re-attach close handler
     document.getElementById('close-progress').onclick = () => doctorProgressEl.classList.add('hidden');
 
     const resultsListEl = document.getElementById('patient-results-list');
-    // Query for Real-World Evidence (RWE) results for the specific patient
-    const q = query(
-        collection(db, RESULTS_COLLECTION), 
-        where('patientMatrixId', '==', patient.matrixId)
-    );
-    
-    // Listen for results in real-time
-    onSnapshot(q, (snapshot) => {
-        const resultsData = {};
-        const resultsHtmlArray = [];
+    // MOCK: RWE simulation is disabled in this version
+    resultsListEl.innerHTML = '<p class="text-gray-500">RWE simulation disabled in this portable version.</p>';
+    renderAdherenceChart({}); // Show empty chart
 
-        snapshot.docs.forEach(doc => {
-            const result = doc.data();
-            const dateKey = getFormattedDate(result.completedAt).split(',')[0];
-            
-            // Adherence data for chart
-            resultsData[dateKey] = (resultsData[dateKey] || 0) + 1;
-
-            // Results list for RWE
-            resultsHtmlArray.push({
-                date: result.completedAt.toDate ? result.completedAt.toDate().getTime() : new Date(result.completedAt).getTime(),
-                html: `
-                <div class="card bg-white border-l-4 border-blue-500">
-                    <p class="font-semibold">${result.exercise} - <span class="text-blue-700">${result.metrics}</span></p>
-                    <p class="text-xs text-gray-500">On Machine: ${result.machine}</p>
-                    <p class="text-xs text-gray-500">Completed: ${getFormattedDate(result.completedAt)}</p>
-                </div>
-                `
-            });
-        });
-        
-        // Sort results array by date (descending)
-        resultsHtmlArray.sort((a, b) => b.date - a.date);
-        
-        resultsListEl.innerHTML = resultsHtmlArray.map(item => item.html).join('');
-        if (snapshot.empty) {
-            resultsListEl.innerHTML = '<p class="text-gray-500">No workout results received yet.</p>';
-        }
-
-        renderAdherenceChart(resultsData); // Update the chart with new data
-    }, (error) => {
-        console.error("Error fetching patient results: ", error);
-        resultsListEl.innerHTML = '<p class="text-red-600">Error loading results.</p>';
-    });
-    
-    switchTab('doctor'); // Ensure the doctor tab is active
+    switchTab('doctor'); 
 }
 
-/**
- * Sets up the clinician portal listeners and initial data fetch.
- */
 function setupDoctorPortal() {
     const diagnosisSelect = document.getElementById('diagnosis-select');
     
@@ -543,19 +433,13 @@ function setupDoctorPortal() {
     document.getElementById('referral-form').addEventListener('submit', handleReferral);
     
     const patientsListEl = document.getElementById('patients-list');
-    // Query for all referred patients
-    const qPatients = query(collection(db, PATIENTS_COLLECTION), orderBy('createdAt', 'desc'));
+    patientsListEl.innerHTML = '';
     
-    // Listen for patient list changes in real-time
-    onSnapshot(qPatients, (snapshot) => {
-        patientsListEl.innerHTML = '';
-        if (snapshot.empty) {
-            patientsListEl.innerHTML = '<p class="text-gray-500">No patients referred yet.</p>';
-            return;
-        }
-        
-        snapshot.forEach(doc => {
-            const patient = doc.data();
+    // MOCK REPLACEMENT: Iterate over local data array instead of Firestore snapshot
+    if (REFERRED_PATIENTS.length === 0) {
+        patientsListEl.innerHTML = '<p class="text-gray-500">No patients referred yet. Refer one above!</p>';
+    } else {
+        REFERRED_PATIENTS.forEach((patient, index) => {
             const diagnosisName = DIAGNOSES.find(d => d.id === patient.diagnosisId)?.name || 'N/A';
             
             let statusClass, statusText;
@@ -575,342 +459,68 @@ function setupDoctorPortal() {
                 <p class="text-xs font-bold ${patient.status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}">${statusText}</p>
                 <p class="text-xs text-gray-400">ID: ${patient.matrixId}</p>
             `;
-            patientCard.onclick = () => showDoctorProgress(doc.id, patient, diagnosis);
+            patientCard.onclick = () => showDoctorProgress(patient.matrixId, patient, diagnosis); 
             patientsListEl.appendChild(patientCard);
         });
-    }, (error) => {
-        console.error("Error fetching patients: ", error);
-        patientsListEl.innerHTML = '<p class="text-red-600">Error loading patient list.</p>';
-    });
+    }
+    // End of MOCK REPLACEMENT
 }
 
-/**
- * Simulates a successful payment by updating the patient status in Firestore.
- * @param {string} patientMatrixId - The unique ID of the patient.
- * @returns {Promise<boolean>} True if update succeeded, false otherwise.
- */
+// MOCK FUNCTION: Simulates payment success/failure locally
 async function processPaymentSimulation(patientMatrixId) {
-    try {
-        const q = query(collection(db, PATIENTS_COLLECTION), where('matrixId', '==', patientMatrixId));
-        const snapshot = await getDocs(q);
-        
-        if (!snapshot.empty) {
-            const patientDocRef = doc(db, PATIENTS_COLLECTION, snapshot.docs[0].id);
-            await setDoc(patientDocRef, { status: 'PAID', paidAt: serverTimestamp() }, { merge: true });
-            console.log(`Patient ${patientMatrixId} status successfully updated to PAID.`);
-            return true;
-        }
-        return false;
-    } catch (error) {
-        console.error("Error processing payment update:", error);
-        return false;
-    }
-}
-
-
-/**
- * Checks URL parameters for a payment success flag and updates status if found.
- */
-async function handlePaymentCheck() {
-    if (!isAuthReady) return;
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('payment');
-    const patientMatrixId = urlParams.get('id');
-
-    if (paymentStatus === 'success' && patientMatrixId) {
-        // Remove the URL parameters to prevent re-triggering the payment logic on reload
-        window.history.replaceState({}, document.title, window.location.pathname); 
-
-        const success = await processPaymentSimulation(patientMatrixId);
-        
-        if (success) {
-            const patient = await getPatientByMatrixId(patientMatrixId);
-            
-            if (patient) {
-                showGymReadyModal(patient);
-                document.getElementById('matrix-id-input').value = patientMatrixId;
-            } else {
-                handlePatientLogin(null, patientMatrixId); // Fallback to prescription view
-            }
-        }
-    }
-}
-
-/**
- * Handles patient login using their unique Matrix ID.
- * @param {Event} e - Form submission event.
- * @param {string|null} inputMatrixIdFromUrl - ID passed from payment flow simulation.
- */
-async function handlePatientLogin(e, inputMatrixIdFromUrl = null) {
-    if (e) e.preventDefault();
-    const inputMatrixId = inputMatrixIdFromUrl || document.getElementById('matrix-id-input').value.trim();
+    const patient = REFERRED_PATIENTS.find(p => p.matrixId === patientMatrixId);
     
-    if (!inputMatrixId) {
-        document.getElementById('patient-status').textContent = 'Please enter your Invitation Code.';
-        document.getElementById('patient-status').className = 'text-red-600 mt-2';
-        return;
+    if (patient) {
+        patient.status = 'PAID';
+        patient.paidAt = new Date().toISOString();
+        setupDoctorPortal(); 
+        return true;
     }
-
-    const patientDataEl = document.getElementById('patient-data');
-    const patientStatusEl = document.getElementById('patient-status');
-    
-    patientStatusEl.textContent = 'Searching...';
-    patientDataEl.classList.add('hidden');
-    closePatientWelcomeModal();
-
-    try {
-        // Find patient document by matrixId
-        const patient = await getPatientByMatrixId(inputMatrixId);
-
-
-        if (!patient) {
-            patientStatusEl.textContent = 'Invitation Code not found. Please check the code.';
-            patientStatusEl.className = 'text-red-600 mt-2';
-            return;
-        }
-        
-        const diagnosis = DIAGNOSES.find(d => d.id === patient.diagnosisId);
-        
-        patientStatusEl.textContent = `Welcome, ${patient.name}.`;
-        patientStatusEl.className = 'text-green-600 mt-2';
-        patientDataEl.classList.remove('hidden');
-        
-        // We need the document ID for the render function, so we re-fetch the snapshot temporarily
-        const qDoc = query(collection(db, PATIENTS_COLLECTION), where('matrixId', '==', inputMatrixId), limit(1));
-        const snapshot = await getDocs(qDoc);
-
-        renderPatientData(snapshot.docs[0].id, patient, diagnosis);
-
-    } catch (error) {
-        console.error("Error during patient login:", error);
-        patientStatusEl.textContent = `Error accessing data. Check console for database errors.`;
-        patientStatusEl.className = 'text-red-600 mt-2';
-    }
+    return false;
 }
 
-/**
- * Simulates the Matrix equipment pushing workout data to Firestore (RWE).
- * @param {Event} e - Button click event.
- */
+// MOCK FUNCTION: This function is no longer needed but kept for structure
+async function handlePaymentCheck() {}
+
+// MOCK FUNCTION: This function is no longer needed but kept for structure
 async function handleSimulatePush(e) {
     const button = e.target.closest('.simulate-push-btn');
-    const patientMatrixId = button.dataset.patientId;
-    const exercise = button.dataset.exercise;
-    const machine = button.dataset.machine;
-    
-    if (!patientMatrixId) return;
-
+    button.textContent = 'RWE Mocked: Data Push Skipped';
+    button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
+    button.classList.add('bg-gray-400');
     button.disabled = true;
-    button.textContent = 'Pushing Data...';
-    
-    try {
-        // Generate mock metrics based on exercise type
-        let metrics;
-        if (exercise.includes('min') || exercise.includes('Walk')) {
-            const distance = randomFloat(1.0, 3.5);
-            const avgHR = randomInt(120, 155);
-            metrics = `Distance: ${distance} mi, Avg HR: ${avgHR} BPM`;
-        } else if (exercise.includes('Sets')) {
-            const weight = randomInt(20, 80);
-            const sets = parseInt(exercise.split('Sets')[0].trim());
-            const reps = parseInt(exercise.split('x')[1].trim().split('Rep')[0]);
-            const totalVolume = weight * sets * reps;
-            metrics = `Weight: ${weight} lbs, Total Volume: ${totalVolume} lbs`;
-        } else {
-            metrics = 'Metrics: Completed successfully';
-        }
 
-        const mockResultPayload = {
-            patientMatrixId: patientMatrixId,
-            machine: machine,
-            exercise: exercise,
-            metrics: metrics,
-            completedAt: serverTimestamp(),
-            dataSource: 'Matrix-Validated-Result'
-        };
-        
-        // Add the workout result to the results collection
-        await setDoc(doc(collection(db, RESULTS_COLLECTION)), mockResultPayload);
-        
-        button.textContent = 'Data Pushed Successfully!';
-        button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
-        button.classList.add('bg-green-500');
-        
-    } catch (error) {
-        console.error("Error pushing data:", error);
-        button.textContent = 'Error Pushing Data';
-        button.classList.add('bg-red-500');
-    }
-    
-    // Reset button state after a delay
     setTimeout(() => {
         button.disabled = false;
         button.textContent = 'TRIGGER WORKOUT DATA PUSH';
-        button.classList.remove('bg-green-500', 'bg-red-500');
+        button.classList.remove('bg-gray-400');
         button.classList.add('bg-blue-500', 'hover:bg-blue-600');
     }, 3000);
 }
 
-/**
- * Renders the full patient portal view with prescription and history.
- * @param {string} patientDocId - Firestore document ID of the patient.
- * @param {object} patient - Patient data object.
- * @param {object} diagnosis - Diagnosis data object.
- */
-function renderPatientData(patientDocId, patient, diagnosis) {
-    const patientDataEl = document.getElementById('patient-data');
+// MOCK FUNCTION: This function is no longer needed but kept for structure
+async function initializeFirebase() {}
+
+// MOCK FUNCTION: This function is no longer needed but kept for structure
+async function seedCredentialsIfEmpty() {}
+
+// MOCK REPLACEMENT: Finds the first unused credential from local memory array
+async function getAvailableCredential() {
+    // Take the first one and remove it (simulating it being "used")
+    const unusedCredential = AVAILABLE_MOCK_CREDENTIALS.shift(); 
     
-    const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
-    const diagnosisJson = JSON.stringify(diagnosis).replace(/"/g, '&quot;');
-
-    // If payment is pending, show the payment wall
-    if (patient.status === 'PENDING_PAYMENT') {
-        patientDataEl.innerHTML = `
-            <div class="card bg-blue-50 p-6 text-center">
-                <i class="fas fa-heartbeat text-5xl text-blue-600 mb-4"></i>
-                <h3 class="text-xl font-bold text-blue-800 mb-2">Ready to Start? Complete Your Enrollment!</h3>
-                
-                <p class="text-gray-700 mb-4">You're one step closer to activating your personalized, physician-prescribed movement program! Your prescription is reserved, and you can easily secure your access below. Remember, this investment qualifies for pre-tax **HSA/FSA funds**, making this final step towards the gym easy!</p>
-                
-                <a href="#" onclick="event.preventDefault(); openLMNModal(${patientJson}, ${diagnosisJson})" class="w-full inline-block py-3 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150 mb-4">
-                    <i class="fas fa-file-alt mr-2"></i> View Letter of Medical Necessity (LMN)
-                </a>
-                
-                <button onclick="switchTab('payment', '${patient.matrixId}', '${patient.name}', 'hsa')" class="w-full py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 mb-4">
-                    <i class="fas fa-credit-card mr-2"></i> Pay with HSA/FSA (Simulation)
-                </button>
-
-                <button onclick="switchTab('payment', '${patient.matrixId}', '${patient.name}', 'cc')" class="w-full inline-block py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150">
-                    <i class="fas fa-credit-card mr-2"></i> Pay with Credit/Debit Card (Simulation)
-                </button>
-
-                <p class="text-xs text-gray-500 mt-3">Clicking either button takes you to a simulated payment page.</p>
-            </div>
-        `;
-        return;
+    if (!unusedCredential) {
+        return null;
     }
 
-    // If payment is complete, show the regimen details and data push buttons
-    const regimenDetails = WORKOUT_DETAILS[patient.regimenName] || {};
-    
-    let html = `
-        <h3 class="text-xl font-bold text-green-700 mb-4">Your Prescription Access</h3>
-        
-        <div class="card bg-gray-100 p-4">
-            <p class="font-semibold text-gray-700 mb-2">Gym Access Code (For Facility Entry)</p>
-            <div class="code-display bg-white text-green-700">${patient.gymAccessCode}</div>
-            <p class="text-xs text-gray-500 mt-1">Present this code at the gym entrance desk or scanner.</p>
-        </div>
-        
-        <div class="card bg-gray-100 p-4 mt-4">
-            <p class="font-semibold text-gray-700 mb-2">Invitation Code (For Equipment Login)</p>
-            <div class="code-display bg-white text-blue-700">${patient.matrixId}</div>
-            <p class="text-xs text-gray-500 mt-1">Enter this ID directly into the Matrix cardio or strength machine console.</p>
-        </div>
-
-        <div class="card bg-green-50 p-4 mt-4 space-y-3">
-            <p class="font-semibold text-green-700">Diagnosis: ${diagnosis.name}</p>
-            <p class="font-semibold text-green-700">Regimen: ${patient.regimenName}</p>
-            <a href="#" onclick="event.preventDefault(); openLMNModal(${patientJson}, ${diagnosisJson})" class="text-sm text-blue-500 hover:underline flex items-center">
-                <i class="fas fa-file-alt mr-2"></i> View Letter of Medical Necessity (LMN)
-            </a>
-            <a href="${regimenDetails.url}" target="_blank" class="text-sm text-green-600 hover:underline flex items-center font-bold">
-                <i class="fas fa-external-link-alt mr-2"></i> View Full Workout Content Page
-            </a>
-        </div>
-
-        <h3 class="text-xl font-bold text-green-700 mt-6 mb-4">Regimen Steps & Invitation Codes (Simulate Equipment Use)</h3>
-        <div id="regimen-list" class="space-y-3">
-    `;
-    
-    // List of exercises in the regimen
-    regimenDetails.steps.forEach(item => {
-        html += `
-            <div class="card bg-white border-l-4 border-blue-500">
-                <p class="font-bold">${item.machine}</p>
-                <p class="text-gray-700">${item.activity}</p>
-                <p class="text-xs text-blue-600 font-mono mt-1">Invitation Code: ${item.matrixWorkoutId}</p>
-                <button data-patient-id="${patient.matrixId}" data-exercise="${item.activity}" data-machine="${item.machine}" class="simulate-push-btn mt-2 w-full text-center py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 transition duration-150">
-                    <i class="fas fa-satellite-dish"></i> TRIGGER WORKOUT DATA PUSH
-                </button>
-            </div>
-        `;
-    });
-
-    html += `</div>
-        <h3 class="text-xl font-bold text-green-700 mt-6 mb-4">Completed History</h3>
-        <div id="patient-history-list" class="space-y-3">
-            <p class="text-gray-500">Loading history...</p>
-        </div>
-    `;
-    
-    patientDataEl.innerHTML = html;
-    
-    // Re-attach event listeners for simulation buttons
-    document.querySelectorAll('.simulate-push-btn').forEach(button => {
-        button.addEventListener('click', handleSimulatePush);
-    });
-    
-    // Listen for patient workout history in real-time
-    const historyListEl = document.getElementById('patient-history-list');
-    const qHistory = query(
-        collection(db, RESULTS_COLLECTION), 
-        where('patientMatrixId', '==', patient.matrixId)
-    );
-    
-    onSnapshot(qHistory, (snapshot) => {
-        const resultsListEl = document.getElementById('patient-history-list'); // Re-get for patient view
-        resultsListEl.innerHTML = '';
-        if (snapshot.empty) {
-            resultsListEl.innerHTML = '<p class="text-gray-500">No completed workouts recorded.</p>';
-            return;
-        }
-        
-        const resultsHtmlArray = [];
-
-        snapshot.docs.forEach(doc => {
-            const result = doc.data();
-            resultsHtmlArray.push({
-                date: result.completedAt.toDate ? result.completedAt.toDate().getTime() : new Date(result.completedAt).getTime(),
-                html: `
-                <div class="card bg-white border-l-4 border-green-500">
-                    <p class="font-semibold">${result.exercise} - <span class="text-blue-700">${result.metrics}</span></p>
-                    <p class="text-xs text-gray-500">On Machine: ${result.machine}</p>
-                    <p class="text-xs text-gray-500">Completed: ${getFormattedDate(result.completedAt)}</p>
-                </div>
-                `
-            });
-        });
-
-        // Sort results array by date (descending)
-        resultsHtmlArray.sort((a, b) => b.date - a.date);
-        resultsListEl.innerHTML = resultsHtmlArray.map(item => item.html).join('');
-        
-    }, (error) => {
-        console.error("Error fetching patient history: ", error);
-        historyListEl.innerHTML = '<p class="text-red-600">Error loading history. Check console for database errors.</p>';
-    });
+    // Mock the structure expected by handleReferral
+    return {
+        docId: unusedCredential.matrixId,
+        data: unusedCredential
+    };
 }
 
-/**
- * Sets up the patient portal listeners and initial checks.
- */
-function setupPatientPortal() {
-    document.getElementById('patient-search-form').addEventListener('submit', handlePatientLogin);
-    
-    // Show the welcome email modal if a referral was just completed in the doctor portal
-    if (window.patientWelcomeData) {
-        showPatientWelcomeModal(window.patientWelcomeData);
-    }
-}
 
-/**
- * Renders the simulated HSA/FSA or Credit Card payment form.
- * @param {string} matrixId - Patient's unique ID.
- * @param {string} patientName - Patient's name.
- * @param {string} type - 'hsa' or 'cc'.
- */
 function setupPaymentForm(matrixId, patientName, type) {
     const paymentPanel = document.getElementById('payment-panel');
     
@@ -959,32 +569,24 @@ function setupPaymentForm(matrixId, patientName, type) {
     document.getElementById('unified-payment-form').addEventListener('submit', handleUnifiedPaymentFormSubmit);
 }
 
-/**
- * Handles the unified payment form submission, shows success modal, and completes enrollment.
- */
 function handleUnifiedPaymentFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const matrixId = form.matrixId.value;
 
-    // Show the standard success modal
     const successModal = document.getElementById('payment-success-modal');
     successModal.classList.remove('hidden');
 
-    // Set the handler for the modal close button (Go to the Gym)
     document.getElementById('close-payment-success-btn').onclick = async () => {
         successModal.classList.add('hidden');
         
-        // Finalize payment in Firestore 
         const success = await processPaymentSimulation(matrixId);
 
         if (success) {
             const patient = await getPatientByMatrixId(matrixId);
             if (patient) {
-                // After success, show the final gym details modal
                 showGymReadyModal(patient);
             } else {
-                // Fallback in case patient data fetch failed
                 switchTab('patient');
             }
         } else {
@@ -995,10 +597,6 @@ function handleUnifiedPaymentFormSubmit(e) {
     };
 }
 
-/**
- * Shows the final modal with gym details and membership ID.
- * @param {object} patient - The fully enrolled patient data object.
- */
 function showGymReadyModal(patient) {
     const modalEl = document.getElementById('gym-ready-modal');
     const contentEl = document.getElementById('gym-ready-content');
@@ -1027,145 +625,28 @@ function showGymReadyModal(patient) {
 
     modalEl.classList.remove('hidden');
 
-    // Set the handler for the modal close button to switch back to Clinician Portal
     document.getElementById('close-gym-ready-btn').onclick = () => {
         modalEl.classList.add('hidden');
-        switchTab('doctor'); // User request: Switch back to Clinician Portal
+        switchTab('doctor');
     };
 }
 
-/**
- * Initializes Firebase and sets up authentication listeners.
- */
-async function initializeFirebase() {
-    document.getElementById('loading-message').classList.remove('hidden');
-    document.getElementById('content').classList.add('hidden');
-
-    try {
-        const firebaseConfigToUse = firebaseConfig;
-        const initialAuthTokenToUse = initialAuthToken; 
-
-        if (Object.keys(firebaseConfigToUse).length === 0 || !firebaseConfigToUse.projectId) {
-            console.error("Critical: Firebase config missing or invalid.");
-            document.getElementById('content').innerHTML = '<p class="text-red-600 p-4">Error: Firebase configuration missing. Cannot run demo.</p>';
-            return;
-        }
-        app = initializeApp(firebaseConfigToUse);
-        db = getFirestore(app);
-        auth = getAuth(app);
-        
-        onAuthStateChanged(auth, async (user) => {
-            if (user) {
-                userId = user.uid;
-                isAuthReady = true;
-                console.log("Authenticated as:", userId);
-                
-                try {
-                    // Seed credentials if the collection is empty
-                    await seedCredentialsIfEmpty(); 
-                } catch (e) {
-                    console.error("CRITICAL: Failed to seed credentials. Referral will fail.", e);
-                }
-                
-                setupDoctorPortal(); 
-                setupPatientPortal(); 
-                
-                await handlePaymentCheck(); // Check for URL payment success
-                
-                document.getElementById('loading-message').classList.add('hidden');
-                document.getElementById('content').classList.remove('hidden');
-            } else {
-                // Sign in if a token is available, otherwise sign in anonymously
-                if (initialAuthTokenToUse) {
-                    await signInWithCustomToken(auth, initialAuthTokenToUse);
-                } else {
-                    await signInAnonymously(auth);
-                }
-            }
-        });
-    } catch (error) {
-        console.error("Firebase initialization failed:", error);
-        document.getElementById('loading-message').classList.add('hidden');
-        document.getElementById('content').classList.remove('hidden');
-        document.getElementById('doctor-panel').innerHTML = `<p class="text-red-600 p-4">Error initializing Firebase: ${error.message}. Check console for details.</p>`;
-    }
-}
-
-/**
- * Seeds the mock credentials collection if it is empty.
- */
-async function seedCredentialsIfEmpty() {
-    try {
-        const q = query(collection(db, CREDENTIALS_COLLECTION), limit(1));
-        const snapshot = await getDocs(q);
-
-        if (snapshot.empty) {
-            console.log("Seeding mock credentials...");
-            await Promise.all(MOCK_CREDENTIALS.map(cred => 
-                setDoc(doc(db, CREDENTIALS_COLLECTION, cred.matrixId), cred)
-            ));
-            console.log("Credentials seeded successfully.");
-        }
-    } catch (error) {
-        console.error("FATAL ERROR during credential seeding:", error);
-        throw new Error("Credential seeding failed.");
-    }
-}
-
-/**
- * Switches between the Clinician, Patient, and Payment tabs/views.
- * @param {string} tabName - 'doctor', 'patient', or 'payment'.
- * @param {string|null} matrixId - Optional ID for payment context.
- * @param {string|null} patientName - Optional name for payment context.
- * @param {string|null} paymentType - Optional type ('hsa' or 'cc') for payment context.
- */
-function switchTab(tabName, matrixId = null, patientName = null, paymentType = null) {
-    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
-
-    // The payment panel doesn't have a header button, so we handle active class differently
-    if (tabName !== 'payment') {
-        document.getElementById(`${tabName}-tab`).classList.add('active');
-    }
-    document.getElementById(`${tabName}-panel`).classList.add('active');
-
-    const container = document.querySelector('.app-container');
-    if (tabName === 'doctor') {
-        container.classList.add('doctor-view');
-        // Hide patient progress view when switching back to main doctor list
-        document.getElementById('doctor-progress').classList.add('hidden'); 
-    } else {
-        container.classList.remove('doctor-view');
-    }
-    
-    // Setup the payment form context if switching to payment
-    if (tabName === 'payment' && matrixId && patientName && paymentType) {
-        setupPaymentForm(matrixId, patientName, paymentType);
-    }
-    
-    // Show the welcome modal if referral data is pending and we switch to patient view
-    if (tabName === 'patient' && window.patientWelcomeData) {
-        showPatientWelcomeModal(window.patientWelcomeData);
-    }
-}
-
+// --- INITIALIZATION ---
 window.onload = () => {
     // 1. Skip loading message
     document.getElementById('loading-message').classList.add('hidden');
     document.getElementById('content').classList.remove('hidden');
 
-    // 2. Mock necessary globals (userId, isAuthReady)
-    userId = 'MOCK_USER_ID';
-    isAuthReady = true;
+    // 2. Mock necessary globals (Keep as placeholders, but the logic relies on the global variables defined above)
 
     // 3. Directly run the setup functions to load the UI
     setupDoctorPortal(); 
     setupPatientPortal(); 
     
-    // 4. Force display to doctor portal if that's the intended default
+    // 4. Force display to doctor portal
     switchTab('doctor');
 
-    console.log("DIAGNOSTIC MODE: Firebase initialization was bypassed.");
+    console.log("MOCK DATA LAYER ENABLED: Firebase data interactions are now mocked in-memory.");
 };
 window.switchTab = switchTab;
 window.DIAGNOSES = DIAGNOSES;
