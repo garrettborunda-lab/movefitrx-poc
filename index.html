@@ -3,19 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MoveFitRx PoC Demo (Stable)</title>
-    
+    <title>MoveFitRx Stable PoC Demo</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
-    
     <link rel="stylesheet" href="styles.css">
-    
+    <script type="module" src="script.js"></script>
 </head>
 <body>
-    <div id="clinician-notification-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 relative">
-            <div id="clinician-notification-content">
-                </div>
+    <div id="clinician-notification-modal" class="modal-overlay hidden">
+        <div class="modal-content max-w-sm">
+            <div id="clinician-notification-content"></div>
             <div class="p-4 border-t flex justify-end">
                 <button id="close-clinician-notification-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
                     <i class="fas fa-times mr-2"></i> Close
@@ -24,10 +21,9 @@
         </div>
     </div>
 
-    <div id="patient-welcome-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-40 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 relative">
-            <div id="patient-welcome-content" class="p-4">
-                </div>
+    <div id="patient-welcome-modal" class="modal-overlay hidden">
+        <div class="modal-content max-w-lg">
+            <div id="patient-welcome-content" class="p-4"></div>
             <div class="p-4 border-t flex justify-end">
                 <button onclick="closePatientWelcomeModal()" class="bg-gray-400 text-white py-2 px-4 rounded-md hover:bg-gray-500 focus:outline-none">
                     Got it! Close Email
@@ -36,8 +32,8 @@
         </div>
     </div>
 
-    <div id="lmn-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-2xl w-full mx-4 relative h-[90vh] flex flex-col">
+    <div id="lmn-modal" class="modal-overlay hidden">
+        <div class="modal-content max-w-2xl h-[90vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center">
                 <h3 class="text-xl font-bold text-green-700">Letter of Medical Necessity Preview</h3>
                 <button onclick="closeLMNModal()" class="text-gray-500 hover:text-gray-700 focus:outline-none">
@@ -55,8 +51,8 @@
         </div>
     </div>
     
-    <div id="payment-success-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 relative">
+    <div id="payment-success-modal" class="modal-overlay hidden">
+        <div class="modal-content max-w-sm">
             <div id="payment-success-content" class="p-6 text-center">
                 <i class="fas fa-check-circle text-5xl text-green-500 mb-4"></i>
                 <h3 class="text-2xl font-extrabold text-gray-900 mb-2">Payment Successful!</h3>
@@ -70,10 +66,9 @@
         </div>
     </div>
 
-    <div id="gym-ready-modal" class="fixed inset-0 bg-gray-900 bg-opacity-75 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-xl shadow-2xl max-w-sm w-full mx-4 relative">
-            <div id="gym-ready-content">
-                </div>
+    <div id="gym-ready-modal" class="modal-overlay hidden">
+        <div class="modal-content max-w-sm">
+            <div id="gym-ready-content"></div>
             <div class="p-4 border-t flex justify-center">
                 <button id="close-gym-ready-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
                     <i class="fas fa-times mr-2"></i> Close and View Clinician Dashboard
@@ -94,12 +89,7 @@
             </div>
         </header>
 
-        <div id="loading-message" class="p-8 text-center text-gray-500 hidden">
-            <i class="fas fa-spinner fa-spin text-4xl text-green-500 mb-4"></i>
-            <p>Initializing Firebase and Authentication...</p>
-        </div>
-
-        <div id="content" class="flex-grow overflow-y-auto hidden">
+        <div id="content" class="flex-grow overflow-y-auto">
             
             <div id="doctor-panel" class="panel active">
                 <div class="mb-6 border-b pb-4">
@@ -108,7 +98,6 @@
                 </div>
 
                 <h2 class="text-2xl font-bold mb-4 text-green-700">1. New Patient Referral</h2>
-
                 
                 <form id="referral-form" class="card bg-gray-50 p-6 space-y-4">
                     <div>
@@ -163,7 +152,5 @@
 
         </div>
     </div>
-    
-    <script type="module" src="script.js"></script>
 </body>
 </html>
