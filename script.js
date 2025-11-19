@@ -3,6 +3,9 @@
  * It strictly adheres to the NO FIREBASE/Database SDKs rule.
  * All data operations (Referral, Payment Status Lookup, RWE results)
  * occur exclusively on local JavaScript arrays in memory.
+ * * FLOW FIX: Implemented Local Polling/Observer functions (startPatientListObserver, 
+ * startPatientResultObserver) to keep the UI in sync with local data, 
+ * replacing the functionality of Firebase's onSnapshot.
  */
 
 // --- CORE DATA MODELS (Local Mock Data) ---
@@ -74,9 +77,12 @@ let MOCK_CREDENTIALS = [
     { matrixId: 'MFRX-QR009', gymAccessCode: '205109', used: false },
     { matrixId: 'MFRX-ST010', gymAccessCode: '205110', used: false },
 ];
-let REFERRED_PATIENTS = []; // Stores patient objects: { name, email, matrixId, gymAccessCode, diagnosisId, regimenName, status, createdAt }
-let PATIENT_RESULTS = []; // Stores RWE results: { patientMatrixId, machine, exercise, metrics, completedAt }
-let PENDING_PATIENT_DATA = null; // Used to pass data between doctor referral and patient welcome modal
+let REFERRED_PATIENTS = []; 
+let PATIENT_RESULTS = []; 
+let PENDING_PATIENT_DATA = null; 
+
+// --- OBSERVER STATE ---
+let CURRENT_DOCTOR_PROGRESS_MATRIX_ID = null;
 
 // Utility functions
 const randomInt = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -88,7 +94,7 @@ const randomFloat = (min, max) => (Math.random() * (max - min) + min).toFixed(1)
  */
 function getMockPastDate() {
     const d = new Date();
-    d.setDate(d.getDate() - randomInt(0, 6)); // Random day in the last 7 days
+    d.setDate(d.getDate() - randomInt(0, 6)); 
     d.setHours(randomInt(9, 17));
     d.setMinutes(randomInt(0, 59));
     return d;
@@ -96,9 +102,6 @@ function getMockPastDate() {
 
 /**
  * Converts a Date object (or timestamp/string) to a readable date/time string.
- * This replaces the Firebase Timestamp function.
- * @param {Date|number|string} dateInput
- * @returns {string} Formatted date string.
  */
 const getFormattedDate = (dateInput) => {
     if (!dateInput) return 'N/A';
@@ -108,7 +111,6 @@ const getFormattedDate = (dateInput) => {
 
 /**
  * Finds the first unused credential and marks it as used in the local array.
- * @returns {object|null} The credential object or null.
  */
 function getAndMarkAvailableCredential() {
     const credential = MOCK_CREDENTIALS.find(c => !c.used);
@@ -121,11 +123,60 @@ function getAndMarkAvailableCredential() {
 
 /**
  * Finds a patient in the local REFERRED_PATIENTS array.
- * @param {string} matrixId - The unique ID of the patient.
- * @returns {object|null} The patient data object or null.
  */
 function getPatientByMatrixId(matrixId) {
     return REFERRED_PATIENTS.find(p => p.matrixId === matrixId) || null;
+}
+
+// --- FLOW FIX: LOCAL OBSERVER FUNCTIONS ---
+
+let listObserverInterval = null;
+let resultObserverInterval = null;
+
+/**
+ * Starts an observer that periodically re-renders the main patient list 
+ * in the Clinician Portal to reflect status changes (e.g., payment complete).
+ */
+function startPatientListObserver() {
+    // Clear existing interval to avoid duplicates
+    if (listObserverInterval) clearInterval(listObserverInterval); 
+
+    // Re-render every 1 second (mimicking real-time update speed)
+    listObserverInterval = setInterval(() => {
+        // Only re-render if the doctor panel is currently active
+        if (document.getElementById('doctor-panel').classList.contains('active') && 
+            document.getElementById('doctor-progress').classList.contains('hidden')) {
+            renderDoctorPatientList();
+        }
+    }, 1000);
+}
+
+/**
+ * Starts an observer that periodically re-renders the detailed progress view 
+ * for a specific patient to reflect new RWE results.
+ */
+function startPatientResultObserver(matrixId) {
+    if (resultObserverInterval) clearInterval(resultObserverInterval); 
+    CURRENT_DOCTOR_PROGRESS_MATRIX_ID = matrixId;
+
+    resultObserverInterval = setInterval(() => {
+        // Only re-render if the patient's progress view is currently active
+        if (!document.getElementById('doctor-progress').classList.contains('hidden') && 
+            CURRENT_DOCTOR_PROGRESS_MATRIX_ID === matrixId) {
+            
+            // Re-render only the RWE results section
+            renderDoctorRweData(matrixId); 
+        }
+    }, 1000);
+}
+
+/**
+ * Stops all observation intervals when switching away from the Doctor Portal.
+ */
+function stopAllObservers() {
+    if (listObserverInterval) clearInterval(listObserverInterval);
+    if (resultObserverInterval) clearInterval(resultObserverInterval);
+    CURRENT_DOCTOR_PROGRESS_MATRIX_ID = null;
 }
 
 // --- MODAL HANDLERS ---
@@ -145,7 +196,7 @@ window.closePatientWelcomeModal = () => {
 // --- REFERRAL FLOW (Clinician Portal) ---
 
 /**
- * Generates the content for the Letter of Medical Necessity (LMN).
+ * Generates the content for the Letter of Medical Necessity (LMN). (Same as before)
  */
 function generateLMNContent(patient, diagnosis) {
     const template = `To Whom It May Concern:
@@ -276,7 +327,7 @@ function handleReferral(e) {
     
     form.reset();
     
-    // Refresh the patient list display immediately
+    // Refresh the patient list display immediately (will be handled by observer, but faster to call directly)
     renderDoctorPatientList();
 
     // Show success modal
@@ -300,16 +351,18 @@ function showClinicianNotification(patient) {
                 <i class="fas fa-check-circle mr-3 text-green-500"></i> Referral Completed!
             </h3>
             <p class="text-gray-700 mb-4">
-                The exercise prescription invitation has been successfully sent to **${patient.name}** (${patient.matrixId}).
+                The exercise prescription invitation has been successfully sent to <strong>${patient.name}</strong> (${patient.matrixId}).
             </p>
             
             <div class="bg-gray-50 p-4 rounded-lg space-y-3 shadow-inner">
                 <p class="font-semibold text-sm text-gray-700">Next Step:</p>
-                <p class="text-sm text-gray-600">The patient must use their unique ID to log in on the **Patient Portal** and complete the payment process.</p>
+                <p class="text-sm text-gray-600">The patient must use their unique ID to log in on the <strong>Patient Portal</strong> and complete the payment process.</p>
             </div>
         </div>
     `;
-    document.getElementById('close-clinician-notification-btn').onclick = () => handleReferralComplete(patient.name, PENDING_PATIENT_DATA, true);
+    // Pass the actual patient object instead of PENDING_PATIENT_DATA (which might be stale if multiple referrals happen fast)
+    const patientObj = getPatientByMatrixId(patient.matrixId); 
+    document.getElementById('close-clinician-notification-btn').onclick = () => handleReferralComplete(patient.name, patientObj, true);
     modalEl.classList.remove('hidden');
 }
 
@@ -318,6 +371,11 @@ function showClinicianNotification(patient) {
  */
 function renderDoctorPatientList() {
     const patientsListEl = document.getElementById('patients-list');
+    
+    // Prevent re-rendering if data hasn't changed (simple check)
+    const currentRenderedHtml = patientsListEl.innerHTML.trim();
+    if (REFERRED_PATIENTS.length === 0 && currentRenderedHtml.includes('No patients referred yet')) return;
+
     patientsListEl.innerHTML = '';
     
     if (REFERRED_PATIENTS.length === 0) {
@@ -325,37 +383,40 @@ function renderDoctorPatientList() {
         return;
     }
     
-    REFERRED_PATIENTS
-        .slice() // Create a shallow copy
-        .sort((a, b) => b.createdAt - a.createdAt) // Sort by most recent
-        .forEach((patient, index) => {
-        const diagnosisName = DIAGNOSES.find(d => d.id === patient.diagnosisId)?.name || 'N/A';
-        
-        let statusClass, statusText;
-        if (patient.status === 'PAID') {
-            statusClass = 'border-green-500';
-            statusText = 'SIGNUP COMPLETE';
-        } else {
-            statusClass = 'border-yellow-500';
-            statusText = 'SIGNUP PENDING';
-        }
+    const newHtml = REFERRED_PATIENTS
+        .slice() 
+        .sort((a, b) => b.createdAt - a.createdAt) 
+        .map((patient) => {
+            const diagnosisName = DIAGNOSES.find(d => d.id === patient.diagnosisId)?.name || 'N/A';
+            
+            let statusClass, statusText;
+            if (patient.status === 'PAID') {
+                statusClass = 'border-green-500';
+                statusText = 'SIGNUP COMPLETE';
+            } else {
+                statusClass = 'border-yellow-500';
+                statusText = 'SIGNUP PENDING';
+            }
 
-        const patientCard = document.createElement('div');
-        patientCard.className = `card bg-white border-l-4 ${statusClass} cursor-pointer hover:bg-gray-50`;
-        patientCard.innerHTML = `
-            <p class="text-lg font-semibold">${patient.name}</p>
-            <p class="text-sm text-gray-600">DX: ${diagnosisName}</p>
-            <p class="text-xs font-bold ${patient.status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}">${statusText}</p>
-            <p class="text-xs text-gray-400">ID: ${patient.matrixId}</p>
-        `;
-        // Pass the patient object directly to the progress view function
-        patientCard.onclick = () => showDoctorProgress(patient);
-        patientsListEl.appendChild(patientCard);
-    });
+            // Must use JSON.stringify and escape for passing objects to inline handlers
+            const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
+
+            return `
+                <div class="card bg-white border-l-4 ${statusClass} cursor-pointer hover:bg-gray-50" 
+                     onclick="showDoctorProgress(${patientJson})">
+                    <p class="text-lg font-semibold">${patient.name}</p>
+                    <p class="text-sm text-gray-600">DX: ${diagnosisName}</p>
+                    <p class="text-xs font-bold ${patient.status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}">${statusText}</p>
+                    <p class="text-xs text-gray-400">ID: ${patient.matrixId}</p>
+                </div>
+            `;
+        }).join('');
+    
+    patientsListEl.innerHTML = newHtml;
 }
 
 /**
- * Sets up the clinician portal UI.
+ * Sets up the clinician portal UI and starts the list observer.
  */
 function setupDoctorPortal() {
     const diagnosisSelect = document.getElementById('diagnosis-select');
@@ -366,6 +427,9 @@ function setupDoctorPortal() {
 
     document.getElementById('referral-form').addEventListener('submit', handleReferral);
     
+    // Start observing the patient list data for changes
+    startPatientListObserver(); 
+    
     // Initial render of the patient list
     renderDoctorPatientList();
 }
@@ -375,8 +439,6 @@ function setupDoctorPortal() {
 
 /**
  * Simulates a successful payment by updating the patient status in the local array.
- * @param {string} patientMatrixId - The unique ID of the patient.
- * @returns {boolean} True if update succeeded, false otherwise.
  */
 function processPaymentSimulation(patientMatrixId) {
     const patient = REFERRED_PATIENTS.find(p => p.matrixId === patientMatrixId);
@@ -386,7 +448,7 @@ function processPaymentSimulation(patientMatrixId) {
         patient.paidAt = Date.now();
         
         // Immediately trigger a UI refresh for both portals
-        renderDoctorPatientList(); 
+        renderDoctorPatientList(); // Force list refresh in case we're on doctor tab
         return true;
     }
     return false;
@@ -424,10 +486,13 @@ function showPatientWelcomeModal(patient) {
     `;
     modalEl.classList.remove('hidden');
     PENDING_PATIENT_DATA = null; // Clear data once shown
+    // Auto-populate the input field after showing the welcome email
+    document.getElementById('matrix-id-input').value = patient.matrixId;
 }
 
 /**
  * Handles patient login using their unique Matrix ID.
+ * FLOW FIX: Forces a re-render of the patient data every time, ensuring the latest status is shown.
  */
 function handlePatientLogin(e) {
     if (e) e.preventDefault();
@@ -461,7 +526,8 @@ function handlePatientLogin(e) {
     patientStatusEl.className = 'text-green-600 mt-2';
     patientDataEl.classList.remove('hidden');
     
-    renderPatientData(patient, diagnosis); // Pass patient object directly
+    // Always render the latest patient data based on their status (PAID/PENDING)
+    renderPatientData(patient, diagnosis); 
 }
 
 /**
@@ -506,13 +572,15 @@ function handleSimulatePush(e) {
     // Add the workout result to the local results array
     PATIENT_RESULTS.unshift(mockResultPayload); // Add to the start
     
-    // Re-render patient dashboard to show the new history immediately
+    // Re-render the patient's prescription/history view immediately
     const patient = getPatientByMatrixId(patientMatrixId);
     if (patient) {
         const diagnosis = DIAGNOSES.find(d => d.id === patient.diagnosisId);
+        // Rerender the whole view to ensure history and button state update
         renderPatientData(patient, diagnosis);
     }
     
+    // Status update only for the specific button
     button.textContent = 'Data Pushed Successfully!';
     button.classList.remove('bg-blue-500', 'hover:bg-blue-600');
     button.classList.add('bg-green-500');
@@ -538,6 +606,7 @@ function renderPatientData(patient, diagnosis) {
 
     // If payment is pending, show the payment wall
     if (patient.status === 'PENDING_PAYMENT') {
+        // ... (Payment Wall HTML - unchanged)
         patientDataEl.innerHTML = `
             <div class="card bg-blue-50 p-6 text-center">
                 <i class="fas fa-heartbeat text-5xl text-blue-600 mb-4"></i>
@@ -657,7 +726,7 @@ function renderPatientHistory(matrixId) {
 }
 
 /**
- * Sets up the patient portal listeners and initial checks.
+ * Sets up the patient portal listeners.
  */
 function setupPatientPortal() {
     document.getElementById('patient-search-form').addEventListener('submit', handlePatientLogin);
@@ -672,7 +741,7 @@ function setupPatientPortal() {
 // --- DOCTOR PROGRESS VIEW FUNCTIONS ---
 
 /**
- * Renders the adherence bar chart based on workout data.
+ * Renders the adherence bar chart based on workout data. (Same as before)
  */
 function renderAdherenceChart(data) {
     const container = document.getElementById('progress-chart-container');
@@ -683,7 +752,6 @@ function renderAdherenceChart(data) {
     for (let i = 6; i >= 0; i--) {
         const d = new Date(today);
         d.setDate(today.getDate() - i);
-        // Create a simple MM/DD/YYYY key for lookup and a short weekday label
         const key = d.toLocaleDateString('en-US'); 
         days.push({
             key: key,
@@ -713,15 +781,58 @@ function renderAdherenceChart(data) {
 }
 
 /**
- * Displays the detailed progress view for a selected patient in the clinician portal.
+ * Renders only the RWE results and adherence chart in the doctor progress view.
  */
-function showDoctorProgress(patient) {
+function renderDoctorRweData(matrixId) {
+    const patientResults = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId);
+    
+    const adherenceData = {};
+    const resultsHtmlArray = [];
+
+    patientResults.forEach(result => {
+        const dateKey = new Date(result.completedAt).toLocaleDateString('en-US');
+        
+        // Adherence data for chart: Count workouts per day
+        adherenceData[dateKey] = (adherenceData[dateKey] || 0) + 1;
+
+        // Results list for RWE (Clinician View)
+        resultsHtmlArray.push({
+            date: result.completedAt,
+            html: `
+                <div class="card bg-white border-l-4 border-blue-500">
+                    <p class="font-semibold">${result.exercise} - <span class="text-blue-700">${result.metrics}</span></p>
+                    <p class="text-xs text-gray-500">On Machine: ${result.machine}</p>
+                    <p class="text-xs text-gray-500">Completed: ${getFormattedDate(result.completedAt)}</p>
+                </div>
+            `
+        });
+    });
+
+    resultsHtmlArray.sort((a, b) => b.date - a.date);
+    
+    const resultsListEl = document.getElementById('patient-results-list');
+    resultsListEl.innerHTML = resultsHtmlArray.map(item => item.html).join('');
+    if (resultsHtmlArray.length === 0) {
+        resultsListEl.innerHTML = '<p class="text-gray-500">No workout results received yet.</p>';
+    }
+
+    renderAdherenceChart(adherenceData);
+}
+
+
+/**
+ * Displays the detailed progress view for a selected patient in the clinician portal.
+ * FLOW FIX: Sets up the RWE result observer for real-time updates while viewing.
+ */
+window.showDoctorProgress = (patient) => {
     const doctorProgressEl = document.getElementById('doctor-progress');
     doctorProgressEl.classList.remove('hidden');
     
-    // Use an IIFE to capture the patient for the close handler
+    // Set up the close handler to stop the observer
     document.getElementById('close-progress').onclick = () => {
         doctorProgressEl.classList.add('hidden');
+        stopAllObservers(); // Stop the result observer
+        startPatientListObserver(); // Restart the list observer
         renderDoctorPatientList(); // Re-render the main list view
     };
 
@@ -732,7 +843,7 @@ function showDoctorProgress(patient) {
     
     const statusDisplay = patient.status === 'PAID' ? 'SIGNUP COMPLETE' : 'SIGNUP PENDING';
 
-    // RENDER MAIN PROGRESS DASHBOARD
+    // RENDER MAIN PROGRESS DASHBOARD STRUCTURE
     doctorProgressEl.innerHTML = `
         <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 z-30 border-b">
             <h2 class="text-2xl font-bold text-green-700">${patient.name}'s Progress</h2>
@@ -771,50 +882,23 @@ function showDoctorProgress(patient) {
     // Re-attach close handler (must be done after innerHTML replacement)
     document.getElementById('close-progress').onclick = () => {
         doctorProgressEl.classList.add('hidden');
-        renderDoctorPatientList(); // Re-render the main list view
+        stopAllObservers();
+        startPatientListObserver();
+        renderDoctorPatientList(); 
     };
 
-    // PROCESS RWE DATA FOR CHART AND LIST
-    const patientResults = PATIENT_RESULTS.filter(r => r.patientMatrixId === patient.matrixId);
-    
-    const adherenceData = {};
-    const resultsHtmlArray = [];
+    // Initial render of RWE data
+    renderDoctorRweData(patient.matrixId);
 
-    patientResults.forEach(result => {
-        const dateKey = new Date(result.completedAt).toLocaleDateString('en-US');
-        
-        // Adherence data for chart: Count workouts per day
-        adherenceData[dateKey] = (adherenceData[dateKey] || 0) + 1;
-
-        // Results list for RWE (Clinician View)
-        resultsHtmlArray.push({
-            date: result.completedAt,
-            html: `
-                <div class="card bg-white border-l-4 border-blue-500">
-                    <p class="font-semibold">${result.exercise} - <span class="text-blue-700">${result.metrics}</span></p>
-                    <p class="text-xs text-gray-500">On Machine: ${result.machine}</p>
-                    <p class="text-xs text-gray-500">Completed: ${getFormattedDate(result.completedAt)}</p>
-                </div>
-            `
-        });
-    });
-
-    // Sort results array by date (descending)
-    resultsHtmlArray.sort((a, b) => b.date - a.date);
-    
-    const resultsListEl = document.getElementById('patient-results-list');
-    resultsListEl.innerHTML = resultsHtmlArray.map(item => item.html).join('');
-    if (resultsHtmlArray.length === 0) {
-        resultsListEl.innerHTML = '<p class="text-gray-500">No workout results received yet.</p>';
-    }
-
-    renderAdherenceChart(adherenceData); // Update the chart with new data
+    // Start the RWE result observer for real-time updates
+    startPatientResultObserver(patient.matrixId);
 }
+
 
 // --- PAYMENT VIEW FUNCTIONS ---
 
 /**
- * Renders the simulated HSA/FSA or Credit Card payment form.
+ * Renders the simulated HSA/FSA or Credit Card payment form. (Unchanged)
  */
 function setupPaymentForm(matrixId, patientName, type) {
     const paymentPanel = document.getElementById('payment-panel');
@@ -869,6 +953,7 @@ function setupPaymentForm(matrixId, patientName, type) {
 
 /**
  * Handles the unified payment form submission, shows success modal, and completes enrollment.
+ * FLOW FIX: Ensures the successful login/patient data render happens after payment status is updated.
  */
 function handleUnifiedPaymentFormSubmit(e) {
     e.preventDefault();
@@ -889,12 +974,16 @@ function handleUnifiedPaymentFormSubmit(e) {
         if (success) {
             const patient = getPatientByMatrixId(matrixId);
             if (patient) {
-                // After success, show the final gym details modal
+                // 1. Show the final gym details modal
                 showGymReadyModal(patient);
+                
+                // 2. Auto-login the patient to display their new prescription view
+                document.getElementById('matrix-id-input').value = patient.matrixId;
+                handlePatientLogin(null);
             } else {
                 // Fallback: just switch to patient view and force re-login
-                document.getElementById('matrix-id-input').value = matrixId;
-                handlePatientLogin(null);
+                document.getElementById('patient-status').textContent = 'Error finalizing enrollment. Please try logging in again.';
+                document.getElementById('patient-status').className = 'text-red-600 mt-2';
                 switchTab('patient');
             }
         } else {
@@ -906,7 +995,7 @@ function handleUnifiedPaymentFormSubmit(e) {
 }
 
 /**
- * Shows the final modal with gym details and membership ID.
+ * Shows the final modal with gym details and membership ID. (Unchanged)
  */
 function showGymReadyModal(patient) {
     const modalEl = document.getElementById('gym-ready-modal');
@@ -948,10 +1037,13 @@ function showGymReadyModal(patient) {
 
 /**
  * Switches between the Clinician, Patient, and Payment tabs/views.
+ * FLOW FIX: Stops and starts the correct observers based on the view.
  */
 function switchTab(tabName, matrixId = null, patientName = null, paymentType = null) {
     document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(panel => panel.classList.remove('active'));
+    
+    stopAllObservers(); // Stop all observers first
 
     // Handle button activation/view state
     if (tabName !== 'payment') {
@@ -964,7 +1056,7 @@ function switchTab(tabName, matrixId = null, patientName = null, paymentType = n
         container.classList.add('doctor-view');
         // Hide patient progress view when switching back to main doctor list
         document.getElementById('doctor-progress').classList.add('hidden'); 
-        renderDoctorPatientList(); // Always refresh the list when switching to the doctor view
+        startPatientListObserver(); // Start list observer
     } else {
         container.classList.remove('doctor-view');
     }
@@ -984,12 +1076,7 @@ function switchTab(tabName, matrixId = null, patientName = null, paymentType = n
  * Initial application setup function.
  */
 function initializeApp() {
-    // Perform initial setups
-    setupDoctorPortal();
-    setupPatientPortal();
-
     // Seed some mock patient data for immediate progress review:
-    // This simulates patients being referred in previous sessions.
     const initialPatient1 = getAndMarkAvailableCredential();
     const initialPatient2 = getAndMarkAvailableCredential();
 
@@ -1006,9 +1093,9 @@ function initializeApp() {
         });
         // Seed some mock RWE data for Sarah
         PATIENT_RESULTS.push(
-            { patientMatrixId: initialPatient1.matrixId, machine: 'Recumbent Bike', exercise: 'Low Intensity Cardio 25 min', metrics: 'Distance: 1.5 mi, Avg HR: 130 BPM', completedAt: getMockPastDate() },
-            { patientMatrixId: initialPatient1.matrixId, machine: 'Leg Press', exercise: '3 Sets x 12 Reps', metrics: 'Weight: 60 lbs, Total Volume: 2160 lbs', completedAt: getMockPastDate() },
-            { patientMatrixId: initialPatient1.matrixId, machine: 'Diverging Seated Row', exercise: '3 Sets x 10 Reps', metrics: 'Weight: 45 lbs, Total Volume: 1350 lbs', completedAt: getMockPastDate() },
+            { patientMatrixId: initialPatient1.matrixId, machine: 'Recumbent Bike', exercise: 'Low Intensity Cardio 25 min', metrics: 'Distance: 1.5 mi, Avg HR: 130 BPM', completedAt: getMockPastDate().getTime() },
+            { patientMatrixId: initialPatient1.matrixId, machine: 'Leg Press', exercise: '3 Sets x 12 Reps', metrics: 'Weight: 60 lbs, Total Volume: 2160 lbs', completedAt: getMockPastDate().getTime() },
+            { patientMatrixId: initialPatient1.matrixId, machine: 'Diverging Seated Row', exercise: '3 Sets x 10 Reps', metrics: 'Weight: 45 lbs, Total Volume: 1350 lbs', completedAt: getMockPastDate().getTime() },
         );
     }
 
@@ -1025,7 +1112,9 @@ function initializeApp() {
         });
     }
 
-    renderDoctorPatientList(); // Final list render with mock data
+    // Perform initial UI setups and start the main observer
+    setupDoctorPortal(); // This starts the list observer
+    setupPatientPortal();
 }
 
 // Attach the main initialization function to the window load event
