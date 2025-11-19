@@ -620,8 +620,8 @@ window.onload = () => {
     document.getElementById('loading-message').classList.add('hidden');
     document.getElementById('content').classList.remove('hidden');
 
-    // 2. Mock necessary globals (These are now defined globally at the top)
-
+    // 2. Mock initialization process
+    
     // 3. Directly run the setup functions to load the UI
     setupDoctorPortal(); 
     setupPatientPortal(); 
