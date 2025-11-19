@@ -1,0 +1,139 @@
+/* Note: The Google Fonts import was removed here for stability */
+body {
+    font-family: 'Inter', sans-serif;
+    background-color: #f7f7f7;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+}
+.app-container {
+    width: 100%;
+    max-width: 420px;
+    background-color: white;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    transition: max-width 0.3s ease-in-out;
+    min-height: 100vh;
+}
+
+@media (min-width: 768px) {
+    .app-container.doctor-view {
+        max-width: 90%;
+        width: 1200px;
+    }
+}
+
+.tab-button {
+    padding: 1rem 0;
+    cursor: pointer;
+    transition: all 0.3s;
+    color: #4a5568;
+    border-bottom: 2px solid transparent;
+}
+.tab-button.active {
+    color: #38a169;
+    font-weight: 600;
+    border-bottom: 2px solid #38a169;
+}
+.panel {
+    display: none;
+    padding: 1.5rem;
+    flex-grow: 1;
+    overflow-y: auto;
+}
+.panel.active {
+    display: block;
+}
+.card {
+    border-radius: 0.5rem;
+    padding: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    margin-bottom: 1rem;
+}
+.code-display {
+    background-color: #e2e8f0;
+    padding: 0.75rem;
+    border-radius: 0.5rem;
+    text-align: center;
+    font-family: monospace;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #2d3748;
+}
+.alert-card {
+    padding: 0.75rem 1rem;
+    border-radius: 0.5rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    margin-bottom: 1rem;
+}
+.alert-success { background-color: #d1fae5; color: #065f46; }
+.alert-warning { background-color: #fef3c7; color: #92400e; }
+.alert-error { background-color: #fee2e2; color: #991b1b; }
+
+/* Doctor Portal Specific Styles */
+.doctor-view .panel {
+    padding: 2rem;
+}
+.progress-chart {
+    min-height: 200px;
+    display: flex;
+    align-items: flex-end;
+    border-left: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+    padding-left: 5px;
+    padding-bottom: 5px;
+}
+.bar-wrapper {
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: center;
+    height: 100%;
+    margin: 0 4px;
+}
+.bar {
+    width: 20px;
+    background-color: #38a169;
+    transition: height 0.5s;
+    border-radius: 2px 2px 0 0;
+    position: relative;
+}
+.bar-label {
+    position: absolute;
+    top: -20px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #4a5568;
+}
+.axis-label {
+    font-size: 0.7rem;
+    margin-top: 2px;
+    text-align: center;
+    color: #718096;
+}
+
+/* LMN Modal Markdown Styling for Readability */
+.lmn-markdown-style h3 {
+    font-size: 1.5rem;
+    font-weight: 700;
+    margin-top: 1.5rem;
+    border-bottom: 2px solid #e5e7eb;
+    padding-bottom: 0.5rem;
+}
+.lmn-markdown-style p {
+    margin-bottom: 1rem;
+    line-height: 1.5;
+    color: #4b5563;
+}
+.lmn-markdown-style strong {
+    font-weight: 700;
+}
+
+/* Patient Welcome Modal specific styles */
+.welcome-email-card {
+    background-color: #f8f8ff;
+    border: 1px solid #e0e0f0;
+    text-align: left;
+}
