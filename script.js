@@ -1149,6 +1149,23 @@ function switchTab(tabName, matrixId = null, patientName = null, paymentType = n
     }
 }
 
-window.onload = initializeFirebase;
+window.onload = () => {
+    // 1. Skip loading message
+    document.getElementById('loading-message').classList.add('hidden');
+    document.getElementById('content').classList.remove('hidden');
+
+    // 2. Mock necessary globals (userId, isAuthReady)
+    userId = 'MOCK_USER_ID';
+    isAuthReady = true;
+
+    // 3. Directly run the setup functions to load the UI
+    setupDoctorPortal(); 
+    setupPatientPortal(); 
+    
+    // 4. Force display to doctor portal if that's the intended default
+    switchTab('doctor');
+
+    console.log("DIAGNOSTIC MODE: Firebase initialization was bypassed.");
+};
 window.switchTab = switchTab;
 window.DIAGNOSES = DIAGNOSES;
