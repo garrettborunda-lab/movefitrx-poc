@@ -196,7 +196,7 @@ window.closePatientWelcomeModal = () => {
 // --- REFERRAL FLOW (Clinician Portal) ---
 
 /**
- * Generates the content for the Letter of Medical Necessity (LMN). (Same as before)
+ * Generates the content for the Letter of Medical Necessity (LMN).
  */
 function generateLMNContent(patient, diagnosis) {
     const template = `To Whom It May Concern:
@@ -898,7 +898,7 @@ window.showDoctorProgress = (patient) => {
 // --- PAYMENT VIEW FUNCTIONS ---
 
 /**
- * Renders the simulated HSA/FSA or Credit Card payment form. (Unchanged)
+ * Renders the simulated HSA/FSA or Credit Card payment form.
  */
 function setupPaymentForm(matrixId, patientName, type) {
     const paymentPanel = document.getElementById('payment-panel');
@@ -953,7 +953,6 @@ function setupPaymentForm(matrixId, patientName, type) {
 
 /**
  * Handles the unified payment form submission, shows success modal, and completes enrollment.
- * FLOW FIX: Ensures the successful login/patient data render happens after payment status is updated.
  */
 function handleUnifiedPaymentFormSubmit(e) {
     e.preventDefault();
@@ -977,7 +976,7 @@ function handleUnifiedPaymentFormSubmit(e) {
                 // 1. Show the final gym details modal
                 showGymReadyModal(patient);
                 
-                // 2. Auto-login the patient to display their new prescription view
+                // 2. Auto-login the patient to display their new prescription view (renders behind the modal)
                 document.getElementById('matrix-id-input').value = patient.matrixId;
                 handlePatientLogin(null);
             } else {
@@ -995,7 +994,7 @@ function handleUnifiedPaymentFormSubmit(e) {
 }
 
 /**
- * Shows the final modal with gym details and membership ID. (Unchanged)
+ * Shows the final modal with gym details and membership ID.
  */
 function showGymReadyModal(patient) {
     const modalEl = document.getElementById('gym-ready-modal');
@@ -1025,10 +1024,10 @@ function showGymReadyModal(patient) {
 
     modalEl.classList.remove('hidden');
 
-    // Set the handler for the modal close button to switch back to Clinician Portal
+    // **FLOW FIX: Change from switching to 'doctor' to switching to 'patient'**
     document.getElementById('close-gym-ready-btn').onclick = () => {
         modalEl.classList.add('hidden');
-        switchTab('doctor'); // User request: Switch back to Clinician Portal
+        switchTab('patient'); // User lands on their active prescription page
     };
 }
 
