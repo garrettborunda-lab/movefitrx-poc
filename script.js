@@ -6,8 +6,10 @@
  * * FLOW FIX: Implemented Local Polling/Observer functions (startPatientListObserver, 
  * startPatientResultObserver) to keep the UI in sync with local data, 
  * replacing the functionality of Firebase's onSnapshot.
- * * UPDATE: Implemented Binkey Pay simulation UX, added "Exercise Regimen in Progress" status,
- * and calculated regimen completion percentage for the Clinician Portal.
+ * * UPDATE:
+ * 1. Fixed broken payment button in Patient Portal (missing arguments to switchTab).
+ * 2. Fixed broken Clinician Progress view (blank page on click) and restored functionality.
+ * 3. Added Regimen Steps and Completed status to the Clinician Progress view.
  */
 
 // --- CORE DATA MODELS (Local Mock Data) ---
@@ -667,7 +669,10 @@ function renderPatientData(patient, diagnosis) {
 
     // If payment is pending, show the payment wall
     if (patient.status === 'PENDING_PAYMENT') {
-        // ... (Payment Wall HTML - unchanged)
+        // --- FIX: Ensure patient name and matrixId are passed to switchTab for payment ---
+        const matrixId = patient.matrixId;
+        const patientName = patient.name;
+        
         patientDataEl.innerHTML = `
             <div class="card bg-blue-50 p-6 text-center">
                 <i class="fas fa-heartbeat text-5xl text-blue-600 mb-4"></i>
@@ -679,11 +684,11 @@ function renderPatientData(patient, diagnosis) {
                     <i class="fas fa-file-alt mr-2"></i> View Letter of Medical Necessity (LMN)
                 </a>
                 
-                <button onclick="switchTab('payment', '${patient.matrixId}', '${patient.name}', 'hsa')" class="w-full py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 mb-4">
+                <button onclick="switchTab('payment', '${matrixId}', '${patientName}', 'hsa')" class="w-full py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150 mb-4">
                     <i class="fas fa-credit-card mr-2"></i> Pay with HSA/FSA (Simulation)
                 </button>
 
-                <button onclick="switchTab('payment', '${patient.matrixId}', '${patient.name}', 'cc')" class="w-full inline-block py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150">
+                <button onclick="switchTab('payment', '${matrixId}', '${patientName}', 'cc')" class="w-full inline-block py-3 px-4 border border-transparent rounded-md shadow-lg text-sm font-medium text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 transition duration-150">
                     <i class="fas fa-credit-card mr-2"></i> Pay with Credit/Debit Card (Simulation)
                 </button>
 
@@ -918,23 +923,62 @@ function renderDoctorRweData(matrixId) {
     renderDoctorProgressDisplay(matrixId); // Update progress summary
 }
 
+/**
+ * Renders the list of assigned regimen steps for the Clinician Portal, marking them as complete or incomplete.
+ */
+function renderDoctorRegimenSteps(patient) {
+    const regimenDetails = WORKOUT_DETAILS[patient.regimenName] || {};
+    const patientWorkouts = PATIENT_RESULTS.filter(r => r.patientMatrixId === patient.matrixId);
+    
+    // Collect all unique matrixWorkoutIds that the patient has completed
+    const completedWorkoutIds = new Set(patientWorkouts.map(w => {
+        // Simple logic: check if the machine/activity combo exists in the workout details steps
+        const matchingStep = regimenDetails.steps.find(s => s.machine === w.machine && s.activity === w.exercise);
+        return matchingStep ? matchingStep.matrixWorkoutId : null;
+    }).filter(id => id !== null));
+
+    let html = `
+        <h3 class="text-xl font-bold mt-6 mb-2 text-green-700">Assigned Regimen Steps</h3>
+        <div id="regimen-steps-list" class="space-y-3">
+    `;
+
+    regimenDetails.steps.forEach(item => {
+        // For a true count, we'll mark a step as completed if the patient has any RWE data matching that step's details.
+        const isCompleted = completedWorkoutIds.has(item.matrixWorkoutId);
+        const icon = isCompleted ? '<i class="fas fa-check-circle text-green-500 mr-2"></i>' : '<i class="fas fa-clock text-yellow-500 mr-2"></i>';
+        const borderColor = isCompleted ? 'border-green-500' : 'border-gray-300';
+        
+        html += `
+            <div class="card bg-white border-l-4 ${borderColor}">
+                <p class="font-bold flex items-center">${icon}${item.machine}</p>
+                <p class="text-gray-700 ml-5">${item.activity}</p>
+                <p class="text-xs text-gray-500 ml-5">Workout ID: ${item.matrixWorkoutId}</p>
+            </div>
+        `;
+    });
+
+    html += `</div>`;
+    return html;
+}
+
 
 /**
  * Displays the detailed progress view for a selected patient in the clinician portal.
- * FLOW FIX: Sets up the RWE result observer for real-time updates while viewing.
  */
 window.showDoctorProgress = (patient) => {
     const doctorProgressEl = document.getElementById('doctor-progress');
     doctorProgressEl.classList.remove('hidden');
     
     // Set up the close handler to stop the observer
-    document.getElementById('close-progress').onclick = () => {
+    const closeHandler = () => {
         doctorProgressEl.classList.add('hidden');
         stopAllObservers(); // Stop the result observer
         startPatientListObserver(); // Restart the list observer
         renderDoctorPatientList(); // Re-render the main list view
     };
-
+    
+    // We will attach the close handler *after* setting innerHTML
+    
     const diagnosis = DIAGNOSES.find(d => d.id === patient.diagnosisId);
     
     const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
@@ -946,7 +990,8 @@ window.showDoctorProgress = (patient) => {
     const statusColor = statusKey === 'EXERCISE_IN_PROGRESS' ? 'text-blue-600' : 
                           (statusKey === 'SIGNUP_COMPLETE' ? 'text-green-600' : 'text-yellow-600');
 
-    // RENDER MAIN PROGRESS DASHBOARD STRUCTURE
+    // --- RE-RENDER MAIN PROGRESS DASHBOARD STRUCTURE (Fix) ---
+    // Note: The close-progress button handler must be re-attached after setting innerHTML.
     doctorProgressEl.innerHTML = `
         <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pb-2 z-30 border-b">
             <h2 class="text-2xl font-bold text-green-700">${patient.name}'s Progress</h2>
@@ -974,6 +1019,8 @@ window.showDoctorProgress = (patient) => {
         <div id="doctor-progress-details">
             </div>
 
+        ${renderDoctorRegimenSteps(patient)}
+
         <h3 class="text-xl font-bold mt-4 mb-2 text-green-700">Adherence Summary (Last 7 Days)</h3>
         <div id="progress-chart-container" class="card bg-white p-4">
             <p class="text-center text-gray-500">Loading adherence data...</p>
@@ -985,13 +1032,8 @@ window.showDoctorProgress = (patient) => {
         </div>
     `;
     
-    // Re-attach close handler (must be done after innerHTML replacement)
-    document.getElementById('close-progress').onclick = () => {
-        doctorProgressEl.classList.add('hidden');
-        stopAllObservers();
-        startPatientListObserver();
-        renderDoctorPatientList(); 
-    };
+    // Re-attach close handler
+    document.getElementById('close-progress').onclick = closeHandler;
 
     // Initial render of RWE data and progress display
     renderDoctorRweData(patient.matrixId);
@@ -1068,6 +1110,7 @@ function setupPaymentForm(matrixId, patientName, type) {
         ${simulationAlert}
         
         <form id="unified-payment-form" data-payment-type="${type}" class="card bg-white p-6 space-y-4 shadow-lg">
+            <input type="hidden" name="matrixId" value="${matrixId}">
             <h3 class="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
                 <i class="fas ${iconClass} mr-2 text-gray-500"></i> Payment Details
             </h3>
