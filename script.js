@@ -6,7 +6,8 @@
  * * FLOW FIX: Implemented Local Polling/Observer functions (startPatientListObserver, 
  * startPatientResultObserver) to keep the UI in sync with local data, 
  * replacing the functionality of Firebase's onSnapshot.
- * * UPDATE: Added Binkey Pay simulation logic for HSA/FSA payments.
+ * * UPDATE: Implemented Binkey Pay simulation UX, added "Exercise Regimen in Progress" status,
+ * and calculated regimen completion percentage for the Clinician Portal.
  */
 
 // --- CORE DATA MODELS (Local Mock Data) ---
@@ -35,6 +36,8 @@ const DIAGNOSES = [
 const WORKOUT_DETAILS = {
     'Hormonal Balance & Strength': {
         url: 'https://movefitrx.com/regimen/hormonal-strength',
+        // Total of 3 distinct workout steps for regimen calculation
+        totalSteps: 3, 
         steps: [
             { machine: 'Recumbent Bike', activity: 'Low Intensity Cardio 25 min', matrixWorkoutId: 'MXW-HRM-01' },
             { machine: 'Leg Press', activity: '3 Sets x 12 Reps', matrixWorkoutId: 'MXW-HRM-02' },
@@ -43,6 +46,7 @@ const WORKOUT_DETAILS = {
     },
     'Bone Density & Balance': {
         url: 'https://movefitrx.com/regimen/bone-density',
+        totalSteps: 3,
         steps: [
             { machine: 'Treadmill', activity: 'Brisk Walk w/ Low Incline 30 min', matrixWorkoutId: 'MXW-BND-01' },
             { machine: 'Calf Extension', activity: '3 Sets x 15 Reps (Light)', matrixWorkoutId: 'MXW-BND-02' },
@@ -51,6 +55,7 @@ const WORKOUT_DETAILS = {
     },
     'Cardio Endurance & Insulin Sensitivity': {
         url: 'https://movefitrx.com/regimen/cardio-insulin',
+        totalSteps: 2,
         steps: [
             { machine: 'Ascent Trainer', activity: 'Steady State 45 min', matrixWorkoutId: 'MXW-CDI-01' },
             { machine: 'Pec Fly', activity: '3 Sets x 15 Reps (Circuit)', matrixWorkoutId: 'MXW-CDI-02' },
@@ -58,6 +63,7 @@ const WORKOUT_DETAILS = {
     },
     'Cardio Vascular Health': { 
         url: 'https://movefitrx.com/regimen/cardio-vascular-health',
+        totalSteps: 2,
         steps: [
             { machine: 'Treadmill', activity: 'Aerobic Walk 40 min (Target HR: 110-130)', matrixWorkoutId: 'MXW-CVH-01' },
             { machine: 'Seated Leg Curl', activity: '2 Sets x 15 Reps (Low Resistance)', matrixWorkoutId: 'MXW-CVH-02' },
@@ -129,6 +135,38 @@ function getPatientByMatrixId(matrixId) {
     return REFERRED_PATIENTS.find(p => p.matrixId === matrixId) || null;
 }
 
+/**
+ * Determines the current status of the patient for the Clinician Portal display.
+ * @param {string} matrixId 
+ * @param {string} currentStatus 
+ * @returns {string} The updated status string.
+ */
+function getPatientDisplayStatus(matrixId, currentStatus) {
+    if (currentStatus === 'PAID') {
+        const results = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId);
+        if (results.length > 0) {
+            return 'EXERCISE_IN_PROGRESS';
+        }
+        return 'SIGNUP_COMPLETE';
+    }
+    return 'PENDING_PAYMENT';
+}
+
+/**
+ * Calculates the percentage completion of the entire 12-week regimen.
+ * Assumes 3 required workouts per week * 12 weeks = 36 total required workouts.
+ * @param {string} matrixId 
+ * @returns {number} Percentage from 0 to 100.
+ */
+function calculateRegimenCompletion(matrixId) {
+    const totalRequiredWorkouts = 36; 
+    const completedWorkouts = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId).length;
+    
+    // Cap percentage at 100%
+    const percentage = Math.min(100, (completedWorkouts / totalRequiredWorkouts) * 100);
+    return Math.round(percentage);
+}
+
 // --- FLOW FIX: LOCAL OBSERVER FUNCTIONS ---
 
 let listObserverInterval = null;
@@ -136,7 +174,7 @@ let resultObserverInterval = null;
 
 /**
  * Starts an observer that periodically re-renders the main patient list 
- * in the Clinician Portal to reflect status changes (e.g., payment complete).
+ * in the Clinician Portal to reflect status changes (e.g., payment complete, RWE start).
  */
 function startPatientListObserver() {
     // Clear existing interval to avoid duplicates
@@ -165,7 +203,8 @@ function startPatientResultObserver(matrixId) {
         if (!document.getElementById('doctor-progress').classList.contains('hidden') && 
             CURRENT_DOCTOR_PROGRESS_MATRIX_ID === matrixId) {
             
-            // Re-render only the RWE results section
+            // Re-render both progress display and RWE results
+            renderDoctorProgressDisplay(matrixId); 
             renderDoctorRweData(matrixId); 
         }
     }, 1000);
@@ -198,8 +237,7 @@ window.closePatientWelcomeModal = () => {
 
 /**
  * Generates the content for the Letter of Medical Necessity (LMN).
- * UPDATED: Language adjusted to position MoveFitRx as a Type 2 NPI provider
- * for a medically necessary exercise prescription/service, removing gym membership focus.
+ * Language is focused on the reimbursable MoveFitRx Program/Service.
  */
 function generateLMNContent(patient, diagnosis) {
     const template = `To Whom It May Concern:
@@ -396,8 +434,14 @@ function renderDoctorPatientList() {
         .map((patient) => {
             const diagnosisName = DIAGNOSES.find(d => d.id === patient.diagnosisId)?.name || 'N/A';
             
+            // Calculate current status
+            const statusKey = getPatientDisplayStatus(patient.matrixId, patient.status);
+            
             let statusClass, statusText;
-            if (patient.status === 'PAID') {
+            if (statusKey === 'EXERCISE_IN_PROGRESS') {
+                statusClass = 'border-blue-500';
+                statusText = 'EXERCISE REGIMEN IN PROGRESS';
+            } else if (statusKey === 'SIGNUP_COMPLETE') {
                 statusClass = 'border-green-500';
                 statusText = 'SIGNUP COMPLETE';
             } else {
@@ -407,14 +451,24 @@ function renderDoctorPatientList() {
 
             // Must use JSON.stringify and escape for passing objects to inline handlers
             const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
+            
+            const percentage = calculateRegimenCompletion(patient.matrixId);
 
             return `
                 <div class="card bg-white border-l-4 ${statusClass} cursor-pointer hover:bg-gray-50" 
                      onclick="showDoctorProgress(${patientJson})">
                     <p class="text-lg font-semibold">${patient.name}</p>
                     <p class="text-sm text-gray-600">DX: ${diagnosisName}</p>
-                    <p class="text-xs font-bold ${patient.status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}">${statusText}</p>
+                    <p class="text-xs font-bold ${statusKey === 'EXERCISE_IN_PROGRESS' ? 'text-blue-600' : (statusKey === 'SIGNUP_COMPLETE' ? 'text-green-600' : 'text-yellow-600')}">${statusText}</p>
                     <p class="text-xs text-gray-400">ID: ${patient.matrixId}</p>
+                    ${statusKey === 'EXERCISE_IN_PROGRESS' ? 
+                        `<p class="text-xs font-semibold mt-2 text-gray-700">Regimen Complete: ${percentage}%</p>
+                        <div class="progress-container">
+                            <div class="progress-bar-fill" style="width: ${percentage}%">
+                                ${percentage > 5 ? `<span class="progress-text">${percentage}%</span>` : ''}
+                            </div>
+                        </div>` 
+                        : ''}
                 </div>
             `;
         }).join('');
@@ -788,6 +842,43 @@ function renderAdherenceChart(data) {
 }
 
 /**
+ * Renders the regimen completion percentage and summary details in the doctor progress view.
+ */
+function renderDoctorProgressDisplay(matrixId) {
+    const patient = getPatientByMatrixId(matrixId);
+    if (!patient) return;
+    
+    const regimenDetails = WORKOUT_DETAILS[patient.regimenName] || {};
+    const totalRequiredWorkouts = 36; // 3/week * 12 weeks
+    const completedWorkouts = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId).length;
+    const percentage = calculateRegimenCompletion(matrixId);
+    
+    const displayEl = document.getElementById('doctor-progress-details');
+    
+    displayEl.innerHTML = `
+        <h3 class="text-xl font-bold mt-4 mb-2 text-green-700">Regimen Completion</h3>
+        <div class="card bg-white p-4 space-y-3">
+            <div class="flex justify-between text-sm font-semibold text-gray-700">
+                <span>Total Workouts Assigned (12 weeks):</span>
+                <span class="text-gray-900">${totalRequiredWorkouts}</span>
+            </div>
+            <div class="flex justify-between text-sm font-semibold text-gray-700">
+                <span>Workouts Completed (RWE):</span>
+                <span class="text-blue-600">${completedWorkouts}</span>
+            </div>
+            <div class="border-t pt-3">
+                <p class="text-lg font-bold text-gray-800 mb-1">Regimen Progress: ${percentage}%</p>
+                <div class="progress-container">
+                    <div class="progress-bar-fill" style="width: ${percentage}%">
+                        ${percentage > 5 ? `<span class="progress-text">${percentage}%</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+/**
  * Renders only the RWE results and adherence chart in the doctor progress view.
  */
 function renderDoctorRweData(matrixId) {
@@ -820,10 +911,11 @@ function renderDoctorRweData(matrixId) {
     const resultsListEl = document.getElementById('patient-results-list');
     resultsListEl.innerHTML = resultsHtmlArray.map(item => item.html).join('');
     if (resultsHtmlArray.length === 0) {
-        resultsListEl.innerHTML = '<p class="text-gray-500">No workout results received yet.</p>';
+        resultsListEl.innerHTML = '<p class="text-gray-500">Awaiting first workout result...</p>';
     }
 
     renderAdherenceChart(adherenceData);
+    renderDoctorProgressDisplay(matrixId); // Update progress summary
 }
 
 
@@ -848,7 +940,11 @@ window.showDoctorProgress = (patient) => {
     const patientJson = JSON.stringify(patient).replace(/"/g, '&quot;');
     const diagnosisJson = JSON.stringify(diagnosis).replace(/"/g, '&quot;');
     
-    const statusDisplay = patient.status === 'PAID' ? 'SIGNUP COMPLETE' : 'SIGNUP PENDING';
+    const statusKey = getPatientDisplayStatus(patient.matrixId, patient.status);
+    const statusDisplay = statusKey === 'EXERCISE_IN_PROGRESS' ? 'EXERCISE REGIMEN IN PROGRESS' : 
+                          (statusKey === 'SIGNUP_COMPLETE' ? 'SIGNUP COMPLETE' : 'SIGNUP PENDING');
+    const statusColor = statusKey === 'EXERCISE_IN_PROGRESS' ? 'text-blue-600' : 
+                          (statusKey === 'SIGNUP_COMPLETE' ? 'text-green-600' : 'text-yellow-600');
 
     // RENDER MAIN PROGRESS DASHBOARD STRUCTURE
     doctorProgressEl.innerHTML = `
@@ -863,7 +959,7 @@ window.showDoctorProgress = (patient) => {
             </div>
             <div class="card bg-gray-50">
                 <p class="font-semibold text-sm">Status:</p>
-                <p class="text-lg font-bold ${patient.status === 'PAID' ? 'text-green-600' : 'text-yellow-600'}">${statusDisplay}</p>
+                <p class="text-lg font-bold ${statusColor}">${statusDisplay}</p>
             </div>
             <div class="card bg-gray-50 col-span-2">
                 <p class="font-semibold text-sm mb-1">Credentials:</p>
@@ -874,6 +970,9 @@ window.showDoctorProgress = (patient) => {
                 </a>
             </div>
         </div>
+        
+        <div id="doctor-progress-details">
+            </div>
 
         <h3 class="text-xl font-bold mt-4 mb-2 text-green-700">Adherence Summary (Last 7 Days)</h3>
         <div id="progress-chart-container" class="card bg-white p-4">
@@ -894,7 +993,7 @@ window.showDoctorProgress = (patient) => {
         renderDoctorPatientList(); 
     };
 
-    // Initial render of RWE data
+    // Initial render of RWE data and progress display
     renderDoctorRweData(patient.matrixId);
 
     // Start the RWE result observer for real-time updates
@@ -905,7 +1004,8 @@ window.showDoctorProgress = (patient) => {
 // --- PAYMENT VIEW FUNCTIONS ---
 
 /**
- * Renders the simulated HSA/FSA (Binkey Pay) or Credit Card payment form.
+ * Renders the simulated HSA/FSA (Binkey Pay) or Credit Card payment form, 
+ * incorporating UX best practices.
  */
 function setupPaymentForm(matrixId, patientName, type) {
     const paymentPanel = document.getElementById('payment-panel');
@@ -914,41 +1014,64 @@ function setupPaymentForm(matrixId, patientName, type) {
     const cardLabel = isHSA ? 'HSA/FSA Card Number' : 'Credit/Debit Card Number';
     const cardPlaceholder = isHSA ? 'XXXX XXXX XXXX XXXX' : '#### #### #### ####';
     
-    let heading, actionButtonText, simulationAlert;
+    let heading, actionButtonText, simulationAlert, iconClass;
 
     if (isHSA) {
-        // Binkey Pay Specific Configuration
         heading = 'Binkey Pay Secure Checkout';
-        actionButtonText = '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay (HSA/FSA)';
+        actionButtonText = '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay ($99.00)';
+        iconClass = 'fa-hand-holding-usd';
         simulationAlert = `
             <div class="alert-success alert-card flex items-center mb-6">
                 <i class="fas fa-shield-alt mr-3"></i>
-                **Binkey Pay Simulation:** This verifies the medically necessary expense against the LMN using their eligibility engine.
+                **HSA/FSA Eligible:** The MoveFitRx prescription is qualified by your physician's LMN.
             </div>
         `;
     } else {
-        // Standard Credit Card
         heading = 'Credit/Debit Card Payment';
-        actionButtonText = 'Submit Payment ($99.00)';
+        actionButtonText = 'Complete Purchase ($99.00)';
+        iconClass = 'fa-credit-card';
         simulationAlert = `
             <div class="alert-warning alert-card flex items-center mb-6">
                 <i class="fas fa-exclamation-triangle mr-3"></i>
-                This is a simulation of the payment process. No actual funds will be charged.
+                **Simulation Warning:** This is a demo payment page. No actual funds will be charged.
             </div>
         `;
     }
 
+    // UX Best Practice: Order Summary
+    const orderSummary = `
+        <div class="card bg-gray-50 p-4 mb-4">
+            <h4 class="text-md font-bold text-gray-800 mb-2">Order Summary</h4>
+            <div class="flex justify-between text-sm text-gray-600">
+                <span>MoveFitRx 12-Week Prescription</span>
+                <span>$99.00</span>
+            </div>
+            <div class="flex justify-between text-sm text-gray-600">
+                <span>Taxes & Fees</span>
+                <span>$0.00</span>
+            </div>
+            <div class="flex justify-between pt-2 border-t mt-2 text-lg font-extrabold text-gray-900">
+                <span>Total Due</span>
+                <span>$99.00</span>
+            </div>
+        </div>
+    `;
 
     paymentPanel.innerHTML = `
         <button onclick="switchTab('patient')" class="text-blue-500 hover:underline mb-4 flex items-center">
-            <i class="fas fa-arrow-left mr-2"></i> Back to Patient Portal
+            <i class="fas fa-arrow-left mr-2"></i> Back to Enrollment
         </button>
         <h2 class="text-2xl font-bold mb-4 text-green-700">${heading}</h2>
+        
+        ${orderSummary}
+        
         ${simulationAlert}
+        
         <form id="unified-payment-form" data-payment-type="${type}" class="card bg-white p-6 space-y-4 shadow-lg">
-            <input type="hidden" name="matrixId" value="${matrixId}">
-            <p class="text-lg font-semibold text-gray-800 border-b pb-2">Enrollment for: <span class="text-blue-600">${patientName}</span></p>
-            
+            <h3 class="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                <i class="fas ${iconClass} mr-2 text-gray-500"></i> Payment Details
+            </h3>
+
             <div>
                 <label for="cardholder-name" class="block text-sm font-medium text-gray-700">Cardholder Name</label>
                 <input type="text" id="cardholder-name" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 border p-2" value="${patientName}">
@@ -959,11 +1082,11 @@ function setupPaymentForm(matrixId, patientName, type) {
             </div>
             <div class="grid grid-cols-2 gap-4">
                 <div>
-                    <label for="expiry-date" class="block text-sm font-medium text-gray-700">Expiry Date</label>
+                    <label for="expiry-date" class="block text-sm font-medium text-gray-700">Expiry Date (MM/YY)</label>
                     <input type="text" id="expiry-date" required pattern="(0[1-9]|1[0-2])/[0-9]{2}" title="MM/YY" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 border p-2" placeholder="MM/YY">
                 </div>
                 <div>
-                    <label for="cvv" class="block text-sm font-medium text-gray-700">CVV</label>
+                    <label for="cvv" class="block text-sm font-medium text-gray-700">CVV / Security Code</label>
                     <input type="text" id="cvv" required pattern="[0-9]{3,4}" title="3 or 4 digits" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 border p-2" placeholder="123">
                 </div>
             </div>
@@ -972,7 +1095,13 @@ function setupPaymentForm(matrixId, patientName, type) {
                     ${actionButtonText}
                 </button>
             </div>
+            
             <p id="payment-form-status" class="text-sm text-center text-red-600"></p>
+            
+            <div class="security-seal">
+                <i class="fas fa-lock text-green-500 mr-2"></i> 
+                ${isHSA ? 'Securely powered by Binkey Pay' : 'SSL Secure Transaction'}
+            </div>
         </form>
     `;
 
@@ -1000,8 +1129,8 @@ function handleUnifiedPaymentFormSubmit(e) {
         // Show the standard success modal
         const successModal = document.getElementById('payment-success-modal');
         const successMessage = paymentType === 'hsa' 
-            ? 'Eligibility verified and payment successful via Binkey Pay! Thank you for completing your enrollment.'
-            : 'Payment successful! Thank you for completing your enrollment.';
+            ? 'Eligibility verified and payment successful via Binkey Pay! Your prescription is now active.'
+            : 'Payment successful! Your prescription is now active.';
         
         document.getElementById('payment-success-content').querySelector('p').textContent = successMessage;
         successModal.classList.remove('hidden');
@@ -1037,7 +1166,8 @@ function handleUnifiedPaymentFormSubmit(e) {
 
         // Re-enable button state (in case user doesn't close modal and clicks back)
         submitButton.disabled = false;
-        submitButton.textContent = paymentType === 'hsa' ? '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay (HSA/FSA)' : 'Submit Payment ($99.00)';
+        const originalText = paymentType === 'hsa' ? '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay ($99.00)' : 'Complete Purchase ($99.00)';
+        submitButton.innerHTML = originalText;
 
     }, 1500); // Simulate 1.5 second API call/processing delay
 }
@@ -1144,6 +1274,8 @@ function initializeApp() {
             { patientMatrixId: initialPatient1.matrixId, machine: 'Recumbent Bike', exercise: 'Low Intensity Cardio 25 min', metrics: 'Distance: 1.5 mi, Avg HR: 130 BPM', completedAt: getMockPastDate().getTime() },
             { patientMatrixId: initialPatient1.matrixId, machine: 'Leg Press', exercise: '3 Sets x 12 Reps', metrics: 'Weight: 60 lbs, Total Volume: 2160 lbs', completedAt: getMockPastDate().getTime() },
             { patientMatrixId: initialPatient1.matrixId, machine: 'Diverging Seated Row', exercise: '3 Sets x 10 Reps', metrics: 'Weight: 45 lbs, Total Volume: 1350 lbs', completedAt: getMockPastDate().getTime() },
+            { patientMatrixId: initialPatient1.matrixId, machine: 'Recumbent Bike', exercise: 'Low Intensity Cardio 25 min', metrics: 'Distance: 1.6 mi, Avg HR: 132 BPM', completedAt: getMockPastDate().getTime() },
+            { patientMatrixId: initialPatient1.matrixId, machine: 'Leg Press', exercise: '3 Sets x 12 Reps', metrics: 'Weight: 60 lbs, Total Volume: 2160 lbs', completedAt: getMockPastDate().getTime() },
         );
     }
 

@@ -176,3 +176,42 @@ body {
     border: 1px solid #e0e0f0;
     text-align: left;
 }
+
+/* New: Progress Bar for Clinician View */
+.progress-container {
+    background-color: #e5e7eb;
+    border-radius: 9999px; /* Full rounded corners */
+    height: 1.5rem;
+    overflow: hidden;
+    margin-top: 0.5rem;
+}
+
+.progress-bar-fill {
+    height: 100%;
+    background-color: #38a169; /* Tailwind green-600 */
+    transition: width 0.3s ease-in-out;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 0.5rem;
+}
+
+.progress-text {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: white;
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
+}
+
+/* New: Security Seal for Binkey Pay */
+.security-seal {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #4a5568;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.75rem 0;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 1rem;
+}
