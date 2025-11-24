@@ -6,6 +6,7 @@
  * * FLOW FIX: Implemented Local Polling/Observer functions (startPatientListObserver, 
  * startPatientResultObserver) to keep the UI in sync with local data, 
  * replacing the functionality of Firebase's onSnapshot.
+ * * UPDATE: Added Binkey Pay simulation logic for HSA/FSA payments.
  */
 
 // --- CORE DATA MODELS (Local Mock Data) ---
@@ -904,7 +905,7 @@ window.showDoctorProgress = (patient) => {
 // --- PAYMENT VIEW FUNCTIONS ---
 
 /**
- * Renders the simulated HSA/FSA or Credit Card payment form.
+ * Renders the simulated HSA/FSA (Binkey Pay) or Credit Card payment form.
  */
 function setupPaymentForm(matrixId, patientName, type) {
     const paymentPanel = document.getElementById('payment-panel');
@@ -912,18 +913,39 @@ function setupPaymentForm(matrixId, patientName, type) {
     const isHSA = type === 'hsa';
     const cardLabel = isHSA ? 'HSA/FSA Card Number' : 'Credit/Debit Card Number';
     const cardPlaceholder = isHSA ? 'XXXX XXXX XXXX XXXX' : '#### #### #### ####';
-    const heading = isHSA ? 'HSA/FSA Enrollment Payment' : 'Credit/Debit Card Payment';
+    
+    let heading, actionButtonText, simulationAlert;
+
+    if (isHSA) {
+        // Binkey Pay Specific Configuration
+        heading = 'Binkey Pay Secure Checkout';
+        actionButtonText = '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay (HSA/FSA)';
+        simulationAlert = `
+            <div class="alert-success alert-card flex items-center mb-6">
+                <i class="fas fa-shield-alt mr-3"></i>
+                **Binkey Pay Simulation:** This verifies the medically necessary expense against the LMN using their eligibility engine.
+            </div>
+        `;
+    } else {
+        // Standard Credit Card
+        heading = 'Credit/Debit Card Payment';
+        actionButtonText = 'Submit Payment ($99.00)';
+        simulationAlert = `
+            <div class="alert-warning alert-card flex items-center mb-6">
+                <i class="fas fa-exclamation-triangle mr-3"></i>
+                This is a simulation of the payment process. No actual funds will be charged.
+            </div>
+        `;
+    }
+
 
     paymentPanel.innerHTML = `
         <button onclick="switchTab('patient')" class="text-blue-500 hover:underline mb-4 flex items-center">
             <i class="fas fa-arrow-left mr-2"></i> Back to Patient Portal
         </button>
         <h2 class="text-2xl font-bold mb-4 text-green-700">${heading}</h2>
-        <div class="alert-warning alert-card flex items-center mb-6">
-            <i class="fas fa-exclamation-triangle mr-3"></i>
-            This is a simulation of the payment process. No actual funds will be charged.
-        </div>
-        <form id="unified-payment-form" class="card bg-white p-6 space-y-4 shadow-lg">
+        ${simulationAlert}
+        <form id="unified-payment-form" data-payment-type="${type}" class="card bg-white p-6 space-y-4 shadow-lg">
             <input type="hidden" name="matrixId" value="${matrixId}">
             <p class="text-lg font-semibold text-gray-800 border-b pb-2">Enrollment for: <span class="text-blue-600">${patientName}</span></p>
             
@@ -947,7 +969,7 @@ function setupPaymentForm(matrixId, patientName, type) {
             </div>
             <div class="pt-4">
                 <button type="submit" class="w-full py-3 px-4 border border-transparent rounded-md shadow-lg text-lg font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
-                    Submit Payment ($99.00)
+                    ${actionButtonText}
                 </button>
             </div>
             <p id="payment-form-status" class="text-sm text-center text-red-600"></p>
@@ -964,39 +986,60 @@ function handleUnifiedPaymentFormSubmit(e) {
     e.preventDefault();
     const form = e.target;
     const matrixId = form.matrixId.value;
+    const paymentType = form.dataset.paymentType; // Get the payment type (hsa or cc)
+    const statusEl = document.getElementById('payment-form-status');
+    const submitButton = form.querySelector('button[type="submit"]');
 
-    // Show the standard success modal
-    const successModal = document.getElementById('payment-success-modal');
-    successModal.classList.remove('hidden');
+    submitButton.disabled = true;
+    submitButton.textContent = paymentType === 'hsa' ? 'Verifying with Binkey Pay...' : 'Processing Payment...';
+    statusEl.textContent = '';
 
-    // Set the handler for the modal close button (Go to the Gym)
-    document.getElementById('close-payment-success-btn').onclick = () => {
-        successModal.classList.add('hidden');
+
+    // Simulate API delay and processing
+    setTimeout(() => {
+        // Show the standard success modal
+        const successModal = document.getElementById('payment-success-modal');
+        const successMessage = paymentType === 'hsa' 
+            ? 'Eligibility verified and payment successful via Binkey Pay! Thank you for completing your enrollment.'
+            : 'Payment successful! Thank you for completing your enrollment.';
         
-        // Finalize payment in local array
-        const success = processPaymentSimulation(matrixId);
+        document.getElementById('payment-success-content').querySelector('p').textContent = successMessage;
+        successModal.classList.remove('hidden');
 
-        if (success) {
-            const patient = getPatientByMatrixId(matrixId);
-            if (patient) {
-                // 1. Show the final gym details modal
-                showGymReadyModal(patient);
-                
-                // 2. Auto-login the patient to display their new prescription view (renders behind the modal)
-                document.getElementById('matrix-id-input').value = patient.matrixId;
-                handlePatientLogin(null);
+        // Set the handler for the modal close button (Go to the Gym)
+        document.getElementById('close-payment-success-btn').onclick = () => {
+            successModal.classList.add('hidden');
+            
+            // Finalize payment in local array
+            const success = processPaymentSimulation(matrixId);
+
+            if (success) {
+                const patient = getPatientByMatrixId(matrixId);
+                if (patient) {
+                    // 1. Show the final gym details modal
+                    showGymReadyModal(patient);
+                    
+                    // 2. Auto-login the patient to display their new prescription view (renders behind the modal)
+                    document.getElementById('matrix-id-input').value = patient.matrixId;
+                    handlePatientLogin(null);
+                } else {
+                    // Fallback: just switch to patient view and force re-login
+                    document.getElementById('patient-status').textContent = 'Error finalizing enrollment. Please try logging in again.';
+                    document.getElementById('patient-status').className = 'text-red-600 mt-2';
+                    switchTab('patient');
+                }
             } else {
-                // Fallback: just switch to patient view and force re-login
                 document.getElementById('patient-status').textContent = 'Error finalizing enrollment. Please try logging in again.';
                 document.getElementById('patient-status').className = 'text-red-600 mt-2';
                 switchTab('patient');
             }
-        } else {
-            document.getElementById('patient-status').textContent = 'Error finalizing enrollment. Please try logging in again.';
-            document.getElementById('patient-status').className = 'text-red-600 mt-2';
-            switchTab('patient');
-        }
-    };
+        };
+
+        // Re-enable button state (in case user doesn't close modal and clicks back)
+        submitButton.disabled = false;
+        submitButton.textContent = paymentType === 'hsa' ? '<i class="fas fa-hand-holding-usd mr-2"></i> Verify & Pay with Binkey Pay (HSA/FSA)' : 'Submit Payment ($99.00)';
+
+    }, 1500); // Simulate 1.5 second API call/processing delay
 }
 
 /**
