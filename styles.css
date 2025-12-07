@@ -20,15 +20,6 @@ body {
     min-height: 100vh;
 }
 
-/* New: Deeper, Professional Color Palette */
-.color-primary-green { color: #059669; } /* Deep Emerald */
-.bg-primary-green { background-color: #059669; }
-.border-primary-green { border-color: #059669; }
-
-.color-secondary-blue { color: #2563eb; } /* Royal Blue */
-.bg-secondary-blue { background-color: #2563eb; }
-.border-secondary-blue { border-color: #2563eb; }
-
 @media (min-width: 768px) {
     .app-container.doctor-view {
         max-width: 90%;
@@ -45,10 +36,9 @@ body {
 }
 
 .tab-button.active {
-    /* Updated: Use new primary green */
-    color: #059669;
-    font-weight: 700;
-    border-bottom: 3px solid #059669;
+    color: #38a169;
+    font-weight: 600;
+    border-bottom: 2px solid #38a169;
 }
 
 .panel {
@@ -63,26 +53,21 @@ body {
 }
 
 .card {
-    border-radius: 0.75rem; /* Slightly more rounded */
+    border-radius: 0.5rem;
     padding: 1rem;
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05); /* Softer shadow */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
     margin-bottom: 1rem;
-    border: 1px solid #e5e7eb; /* Subtle border for definition */
 }
 
-/* Patient Access Code Card Style */
 .code-display {
-    /* Updated: Cleaner display, slightly darker text */
-    background-color: #f1f5f9;
+    background-color: #e2e8f0;
     padding: 0.75rem;
     border-radius: 0.5rem;
     text-align: center;
-    font-family: 'Inter', sans-serif;
-    font-size: 1.25rem;
-    font-weight: 800;
-    color: #1f2937;
-    letter-spacing: 0.05em;
-    border: 1px dashed #d1d5db; /* Dashed border for visual interest */
+    font-family: monospace;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #2d3748;
 }
 
 .alert-card {
@@ -143,9 +128,8 @@ body {
 }
 
 .bar {
-    /* Updated: Use new primary green */
     width: 20px;
-    background-color: #059669;
+    background-color: #38a169;
     transition: height 0.5s;
     border-radius: 2px 2px 0 0;
     position: relative;
@@ -193,7 +177,7 @@ body {
     text-align: left;
 }
 
-/* Progress Bar for Clinician View */
+/* New: Progress Bar for Clinician View */
 .progress-container {
     background-color: #e5e7eb;
     border-radius: 9999px; /* Full rounded corners */
@@ -204,8 +188,7 @@ body {
 
 .progress-bar-fill {
     height: 100%;
-    /* Updated: Use new primary green */
-    background-color: #059669;
+    background-color: #38a169; /* Tailwind green-600 */
     transition: width 0.3s ease-in-out;
     display: flex;
     align-items: center;
@@ -220,7 +203,7 @@ body {
     text-shadow: 0 0 2px rgba(0, 0, 0, 0.4);
 }
 
-/* Security Seal for Binkey Pay */
+/* New: Security Seal for Binkey Pay */
 .security-seal {
     font-size: 0.875rem;
     font-weight: 600;

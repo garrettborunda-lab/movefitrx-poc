@@ -14,7 +14,7 @@
         <div class="modal-content max-w-sm">
             <div id="clinician-notification-content"></div>
             <div class="p-4 border-t flex justify-end">
-                <button id="close-clinician-notification-btn" class="bg-secondary-blue text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
+                <button id="close-clinician-notification-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
                     <i class="fas fa-times mr-2"></i> Close
                 </button>
             </div>
@@ -35,7 +35,7 @@
     <div id="lmn-modal" class="modal-overlay hidden">
         <div class="modal-content max-w-2xl h-[90vh] flex flex-col">
             <div class="p-4 border-b flex justify-between items-center">
-                <h3 class="text-xl font-bold color-primary-green">Letter of Medical Necessity Preview</h3>
+                <h3 class="text-xl font-bold text-green-700">Letter of Medical Necessity Preview</h3>
                 <button onclick="closeLMNModal()" class="text-gray-500 hover:text-gray-700 focus:outline-none">
                     <i class="fas fa-times text-xl"></i>
                 </button>
@@ -44,7 +44,7 @@
                 <p class="text-gray-500">Loading LMN...</p>
             </div>
             <div class="p-4 border-t flex justify-end">
-                <button onclick="window.print()" class="bg-secondary-blue text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
+                <button onclick="window.print()" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
                     <i class="fas fa-print mr-2"></i> Print Document
                 </button>
             </div>
@@ -59,7 +59,7 @@
                 <p class="text-gray-700">Thank you for completing your enrollment. You are now ready to begin your MoveFitRx prescription.</p>
             </div>
             <div class="p-4 border-t flex justify-center">
-                <button id="close-payment-success-btn" class="bg-primary-green text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none">
+                <button id="close-payment-success-btn" class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 focus:outline-none">
                     Go to the Gym
                 </button>
             </div>
@@ -70,7 +70,7 @@
         <div class="modal-content max-w-sm">
             <div id="gym-ready-content"></div>
             <div class="p-4 border-t flex justify-center">
-                <button id="close-gym-ready-btn" class="bg-secondary-blue text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
+                <button id="close-gym-ready-btn" class="bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none">
                     <i class="fas fa-arrow-right mr-2"></i> Close and View My Prescription
                 </button>
             </div>
@@ -97,7 +97,7 @@
                     <p class="text-gray-500">Secure Prescription & Real-time Adherence</p>
                 </div>
 
-                <h2 class="text-2xl font-bold mb-4 color-primary-green">1. New Patient Referral</h2>
+                <h2 class="text-2xl font-bold mb-4 text-green-700">1. New Patient Referral</h2>
                 
                 <form id="referral-form" class="card bg-gray-50 p-6 space-y-4">
                     <div>
@@ -114,13 +114,13 @@
                             </select>
                     </div>
                     
-                    <button id="submit-referral" type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-primary-green hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
+                    <button id="submit-referral" type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition duration-150">
                         Refer Patient
                     </button>
                     <p id="referral-status" class="text-sm"></p>
                 </form>
 
-                <h2 class="text-2xl font-bold mt-8 mb-4 color-primary-green">2. Review Patient Progress</h2>
+                <h2 class="text-2xl font-bold mt-8 mb-4 text-green-700">2. Review Patient Progress</h2>
                 <div id="patients-list" class="space-y-3">
                     </div>
             </div>
@@ -130,14 +130,14 @@
 
 
             <div id="patient-panel" class="panel">
-                <h2 class="text-2xl font-bold mb-4 color-secondary-blue">Patient Login</h2>
+                <h2 class="text-2xl font-bold mb-4 text-blue-700">Patient Login</h2>
 
                 <form id="patient-search-form" class="card bg-gray-50 space-y-4 mb-6">
                     <div>
                         <label for="matrix-id-input" class="block text-sm font-medium text-gray-700">Enter Your Invitation Code (MFRX-XXXXXX)</label>
                         <input type="text" id="matrix-id-input" required class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 border p-2" placeholder="e.g., MFRX-AB001">
                     </div>
-                    <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-secondary-blue hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150">
+                    <button type="submit" class="w-full py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition duration-150">
                         Access Prescription
                     </button>
                     <p id="patient-status" class="text-sm"></p>
