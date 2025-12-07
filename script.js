@@ -6,7 +6,7 @@
  * * * UPDATE SUMMARY:
  * 1. Aesthetic and UX improvements (professional color palette, Binkey Pay simulation, card design).
  * 2. Clinician Progress View enhancements (Adherence status, Completion %, Regimen Steps).
- * 3. FIX: Removed internal window.onload to resolve mobile script loading/initialization issues.
+ * 3. FIX: Removed internal window.onload and replaced with document.addEventListener('DOMContentLoaded', initializeApp);
  */
 
 // --- CORE DATA MODELS (Local Mock Data) ---
@@ -131,4 +131,45 @@ function getAndMarkAvailableCredential() {
  * Finds a patient in the local REFERRED_PATIENTS array.
  */
 function getPatientByMatrixId(matrixId) {
-    return
+    return REFERRED_PATIENTS.find(p => p.matrixId === matrixId) || null;
+}
+
+/**
+ * Determines the current status of the patient for the Clinician Portal display.
+ * @param {string} matrixId 
+ * @param {string} currentStatus 
+ * @returns {string} The updated status string.
+ */
+function getPatientDisplayStatus(matrixId, currentStatus) {
+    if (currentStatus === 'PAID') {
+        const results = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId);
+        if (results.length > 0) {
+            return 'EXERCISE_IN_PROGRESS';
+        }
+        return 'SIGNUP_COMPLETE';
+    }
+    return 'PENDING_PAYMENT';
+}
+
+/**
+ * Calculates the percentage completion of the entire 12-week regimen.
+ * Assumes 3 required workouts per week * 12 weeks = 36 total required workouts.
+ * @param {string} matrixId 
+ * @returns {number} Percentage from 0 to 100.
+ */
+function calculateRegimenCompletion(matrixId) {
+    const totalRequiredWorkouts = 36; 
+    const completedWorkouts = PATIENT_RESULTS.filter(r => r.patientMatrixId === matrixId).length;
+    
+    // Cap percentage at 100%
+    const percentage = Math.min(100, (completedWorkouts / totalRequiredWorkouts) * 100);
+    return Math.round(percentage);
+}
+
+// --- FLOW FIX: LOCAL OBSERVER FUNCTIONS ---
+
+let listObserverInterval = null;
+let resultObserverInterval = null;
+
+/**
+ * Starts an observer that
